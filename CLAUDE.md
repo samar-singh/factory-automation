@@ -11,6 +11,11 @@ Building an automated system for a garment price tag manufacturing factory to:
 
 ## Current Status (Last Updated: 2025-07-26)
 
+### GitHub Repository
+- **URL**: https://github.com/samar-singh/factory-automation
+- **Status**: Initial commit pushed successfully
+- **Branch**: main
+
 ### Completed ✅
 1. **Project Planning**
    - Created comprehensive implementation plan (`factory_automation_plan.md`)
@@ -79,3 +84,10 @@ Building an automated system for a garment price tag manufacturing factory to:
 - Need Together AI API key for Qwen2.5VL72B vision model
 - System designed for ~50 emails/day volume
 - Budget: ~$100-150/month for API costs
+- Created ROADMAP_PROGRESS_REPORT.md for tracking
+- Project is approximately 25% complete
+
+## Commands & Tools
+- Using `uv` for Python package management
+- Git repository initialized and pushed to GitHub
+- Using Opus model for complex development work
