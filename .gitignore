@@ -1,0 +1,85 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Virtual environments
+factory_automation/.venv/
+
+# Environment variables
+.env
+*.env
+!.env.example
+
+# ChromaDB
+chroma_data/
+*.chroma
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Distribution
+dist/
+build/
+*.egg-info/
+
+# Gradio
+flagged/
+gradio_cached_examples/
+
+# Google API
+token.json
+credentials.json
+
+# ML Models
+models/
+*.pt
+*.pth
+*.onnx
+
+# Data
+data/
+*.xlsx
+*.xls
+*.csv
+!sample_data/
+
+# Temporary
+tmp/
+temp/
+*.tmp
