@@ -1,6 +1,6 @@
 """Base agent implementation using OpenAI Agents SDK."""
-from typing import List, Optional, Dict, Any
-from openai_agents import Agent, Runner
+from typing import List, Optional, Dict, Any, Callable
+from openai_agents import Agent, Runner, tool
 import logging
 
 logger = logging.getLogger(__name__)
@@ -78,3 +78,26 @@ class BaseAgent:
     def add_handoff(self, agent: Agent):
         """Add a handoff agent."""
         self.agent.handoffs.append(agent)
+    
+    def as_tool(self, tool_name: Optional[str] = None, 
+                tool_description: Optional[str] = None) -> Callable:
+        """Convert this agent to a function tool for use by other agents.
+        
+        Args:
+            tool_name: Optional custom tool name (defaults to agent name)
+            tool_description: Optional custom description
+            
+        Returns:
+            Function tool that can be used by other agents
+        """
+        name = tool_name or self.name.lower().replace(" ", "_")
+        description = tool_description or f"Use the {self.name} agent to {self.agent.instructions[:100]}..."
+        
+        @tool(name=name, description=description)
+        async def agent_tool(prompt: str, **kwargs) -> Dict[str, Any]:
+            """Execute the agent with the given prompt and any additional context."""
+            context = kwargs.get('context', {})
+            result = await self.run(prompt, context)
+            return result
+        
+        return agent_tool

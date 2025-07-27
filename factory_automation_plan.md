@@ -17,7 +17,9 @@ This document outlines a comprehensive plan to automate your friend's garment pr
 ### Key Technologies
 - **OpenAI Agents SDK**: Production-ready framework for multi-agent orchestration
 - **ChromaDB**: Free, open-source vector database for RAG
-- **CLIP + Sentence Transformers**: Free multimodal embeddings
+- **Multimodal Models**: 
+  - **CLIP + Sentence Transformers**: Free multimodal embeddings
+  - **Qwen2.5VL72B**: Advanced vision-language model via Together.ai/LiteLLM
 - **Gradio**: Interactive web dashboard
 - **PostgreSQL**: Relational database for structured data
 - **Docker**: Containerized deployment
@@ -27,26 +29,32 @@ This document outlines a comprehensive plan to automate your friend's garment pr
 ### 1. Multi-Agent System Design
 
 ```python
-# Agent Hierarchy
+# Agent Architecture - Function Tools Pattern
 ┌─────────────────────────────────────────────────────────┐
-│                   Orchestrator Agent                     │
-│         (Routes requests to specialized agents)          │
-└────────────────────┬────────────────────────────────────┘
+│              OpenAI Orchestrator Agent                   │
+│     (AI-powered decision making with context)           │
+│                                                         │
+│  Tools (Agents as Functions):                          │
+│  • email_monitor_tool                                  │
+│  • order_interpreter_tool                              │
+│  • inventory_matcher_tool                              │
+│  • document_creator_tool                               │
+│  • payment_tracker_tool                                │
+│  • approval_manager_tool                               │
+└─────────────────────────────────────────────────────────┘
                      │
-      ┌──────────────┼──────────────┬─────────────┬────────────┐
-      ▼              ▼              ▼             ▼            ▼
-┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐
-│  Email   │  │  Order   │  │Inventory │  │ Document │  │ Payment  │
-│ Monitor  │  │Interpreter│  │ Matcher  │  │ Creator  │  │ Tracker  │
-└──────────┘  └──────────┘  └──────────┘  └──────────┘  └──────────┘
+                     ▼
+      Uses agents as function tools based on context
 ```
 
 #### Agent Descriptions
 
-**1. Orchestrator Agent**
-- Central coordinator for all workflows
-- Implements handoffs based on email content
-- Maintains session context across interactions
+**1. Orchestrator Agent (OpenAI-Powered)**
+- AI-driven central coordinator using GPT-4
+- Makes intelligent routing decisions based on email context
+- Maintains conversation history and session context
+- Dynamically adapts workflow based on content understanding
+- Handles complex scenarios and edge cases intelligently
 
 **2. Email Monitor Agent**
 - Polls Gmail API every 5 minutes
@@ -56,7 +64,9 @@ This document outlines a comprehensive plan to automate your friend's garment pr
 
 **3. Order Interpreter Agent**
 - Processes email content with GPT-4
-- Analyzes tag images with Qwen2.5VL72B
+- Analyzes tag images with dual approach:
+  - Qwen2.5VL72B via Together.ai for detailed visual understanding
+  - CLIP embeddings for similarity search
 - Extracts: tag details, quantities, delivery requirements
 - Handles multiple attachment formats
 
@@ -95,8 +105,10 @@ This document outlines a comprehensive plan to automate your friend's garment pr
 │                  Embedding Pipeline                      │
 ├─────────────────────────────────────────────────────────┤
 │  Text: all-MiniLM-L6-v2 (384 dims)                     │
-│  Image: CLIP ViT-B/32 (512 dims)                       │
-│  Combined: Concatenated (896 dims)                      │
+│  Image Embeddings:                                      │
+│    - CLIP ViT-B/32 (512 dims) for vector search        │
+│    - Qwen2.5VL72B for detailed analysis                 │
+│  Combined: Concatenated embeddings for RAG              │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -117,7 +129,8 @@ This document outlines a comprehensive plan to automate your friend's garment pr
 3. **Order Analysis**
    ```
    Order Interpreter → Parse requirements → Extract tag image → 
-   Generate embeddings → Search ChromaDB
+   Qwen2.5VL72B analysis (via Together.ai) → Generate CLIP embeddings → 
+   Search ChromaDB with combined understanding
    ```
 
 4. **Inventory Matching**
@@ -290,27 +303,100 @@ factory_automation/
 
 ### 6. Key Implementation Details
 
-#### A. Multimodal Search Implementation
+#### A. Function Tools Pattern Benefits
+
+**1. Context-Aware Processing**
+```python
+# The orchestrator can handle complex scenarios intelligently
+Examples:
+- "Process this order urgently and apply our usual 10% discount"
+- "Payment received but please change quantity to 500 pieces"
+- "Cancel previous order and replace with this new specification"
+- "Check if we have similar tags if exact match not available"
+```
+
+**2. Dynamic Workflow Adaptation**
+```python
+# No hardcoded if-else chains - AI determines the flow
+# Can handle unexpected scenarios gracefully
+# Learns from patterns in conversation history
+# Provides intelligent fallbacks and suggestions
+```
+
+**3. Natural Language Understanding**
+```python
+# Understands context like:
+- Customer preferences from past orders
+- Urgency indicators in language
+- Special instructions or modifications
+- Follow-up context from email threads
+```
+
+#### B. Multimodal Search Implementation
 
 ```python
+import litellm
+from sentence_transformers import SentenceTransformer
+import clip
+import torch
+
 class MultimodalSearch:
     def __init__(self, chroma_client):
         self.client = chroma_client
         self.text_encoder = SentenceTransformer('all-MiniLM-L6-v2')
         self.clip_model, self.preprocess = clip.load("ViT-B/32")
         
-    def search(self, image=None, text=None, k=10):
+        # Configure LiteLLM for Qwen2.5VL
+        litellm.api_key = os.getenv("TOGETHER_API_KEY")
+        
+    async def analyze_image_with_qwen(self, image_path, query):
+        """Use Qwen2.5VL72B for detailed image analysis."""
+        response = await litellm.acompletion(
+            model="together_ai/Qwen/Qwen2.5-VL-72B-Instruct",
+            messages=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"Analyze this garment tag image: {query}"
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{encode_image(image_path)}"
+                        }
+                    }
+                ]
+            }]
+        )
+        
+        return response.choices[0].message.content
+        
+    async def search(self, image=None, text=None, k=10):
         embeddings = []
+        qwen_analysis = None
         
         if text:
             text_emb = self.text_encoder.encode(text)
             embeddings.append(text_emb)
             
         if image:
+            # Get detailed analysis from Qwen2.5VL
+            qwen_analysis = await self.analyze_image_with_qwen(
+                image, 
+                "Extract tag details, size, material, and any text visible"
+            )
+            
+            # Generate CLIP embeddings for vector search
             image_emb = self.encode_image(image)
             embeddings.append(image_emb)
             
-        # Combine embeddings
+            # Add Qwen analysis to text embedding if available
+            if qwen_analysis:
+                analysis_emb = self.text_encoder.encode(qwen_analysis)
+                embeddings.append(analysis_emb)
+            
+        # Combine all embeddings
         if len(embeddings) > 1:
             combined = np.concatenate(embeddings)
         else:
@@ -322,31 +408,96 @@ class MultimodalSearch:
             n_results=k
         )
         
+        # Enhance results with Qwen analysis
+        if qwen_analysis:
+            results['qwen_analysis'] = qwen_analysis
+        
         return results
 ```
 
-#### B. Agent Handoff Logic
+#### B. Agent Implementation with Function Tools Pattern
 
 ```python
-async def orchestrator_logic(context):
-    email_type = context.get("email_type")
+# Orchestrator Agent using OpenAI Agents SDK
+from agents import Agent, function_tool
+
+ORCHESTRATOR_INSTRUCTIONS = """
+You are the Factory Automation Orchestrator managing a garment price tag 
+manufacturing workflow. You analyze incoming emails and coordinate appropriate 
+actions based on context and conversation history.
+
+Your capabilities:
+- Analyze emails to understand intent (new orders, payments, follow-ups, queries)
+- Extract relevant information and route to appropriate tools
+- Maintain context across email threads
+- Handle complex scenarios like urgent orders, special discounts, or modified requests
+- Ensure human approval for critical decisions
+
+Based on email content:
+1. For new orders: analyze email → extract order → find inventory matches → get approval → create documents
+2. For payments: extract payment info → verify → update order status
+3. For follow-ups: check order status → provide updates
+4. For modifications: understand changes → update order → notify relevant parties
+
+Always consider the full context and conversation history when making decisions.
+"""
+
+# Create orchestrator with all agents as function tools
+orchestrator_agent = Agent(
+    name="FactoryOrchestrator",
+    instructions=ORCHESTRATOR_INSTRUCTIONS,
+    tools=[
+        email_monitor_agent.as_tool(
+            tool_name="email_monitor",
+            tool_description="Check and analyze emails from Gmail"
+        ),
+        order_interpreter_agent.as_tool(
+            tool_name="order_interpreter",
+            tool_description="Extract order details from emails and attachments"
+        ),
+        inventory_matcher_agent.as_tool(
+            tool_name="inventory_matcher",
+            tool_description="Search inventory for matching tags using multimodal RAG"
+        ),
+        document_creator_agent.as_tool(
+            tool_name="document_creator",
+            tool_description="Generate PI and professional email responses"
+        ),
+        payment_tracker_agent.as_tool(
+            tool_name="payment_tracker",
+            tool_description="Process payment confirmations and extract UTR/cheque details"
+        ),
+        approval_manager_agent.as_tool(
+            tool_name="approval_manager",
+            tool_description="Get human approval for order matches and critical decisions"
+        ),
+    ],
+    model="gpt-4o",
+)
+
+# Example usage showing context-aware decision making
+async def process_email_with_context(email_data, conversation_history):
+    """Process email with full context awareness."""
     
-    if email_type == "new_order":
-        # Extract order details
-        order_data = await order_interpreter.run(context)
+    # Prepare context including conversation history
+    context = {
+        "current_email": email_data,
+        "thread_history": conversation_history,
+        "customer_context": get_customer_history(email_data["sender"])
+    }
+    
+    # Let the AI orchestrator decide the workflow
+    result = await orchestrator_agent.run(
+        f"""Process this email considering the full context:
         
-        # Find matches
-        matches = await inventory_matcher.run(order_data)
+        Current Email: {email_data}
+        Thread History: {conversation_history}
         
-        # Get human approval
-        decision = await approval_coordinator.run(matches)
-        
-        # Create documents
-        if decision["approved"]:
-            await document_creator.run(decision)
-            
-    elif email_type == "payment":
-        await payment_tracker.run(context)
+        Analyze the intent and take appropriate actions.""",
+        context=context
+    )
+    
+    return result
 ```
 
 ### 7. Gradio Dashboard Features
@@ -398,7 +549,10 @@ pip install -r requirements.txt
 
 # Configure environment variables
 cp .env.example .env
-# Edit .env with your credentials
+# Edit .env with your credentials:
+# - OPENAI_API_KEY
+# - TOGETHER_API_KEY (for Qwen2.5VL72B)
+# - GMAIL_API_KEY
 
 # Start services
 docker-compose up -d
@@ -471,28 +625,28 @@ services:
 ## Implementation Timeline
 
 ### Phase 1: Foundation (Weeks 1-2)
-- Set up development environment
+- Set up development environment with OpenAI Agents SDK
 - Configure ChromaDB and PostgreSQL
-- Implement basic agent structure
+- Implement orchestrator agent with function tools pattern
 - Create Gmail integration
 
 ### Phase 2: Core Features (Weeks 3-4)
-- Build email processing pipeline
+- Build individual agents as function tools
 - Implement multimodal RAG search
 - Create inventory matching logic
 - Develop OCR capabilities
 
 ### Phase 3: Agent Integration (Weeks 5-6)
-- Connect all agents with handoffs
-- Implement approval workflows
+- Integrate all agents as tools for orchestrator
+- Implement context management and conversation history
 - Build document generation
-- Add payment tracking
+- Add payment tracking with intelligent routing
 
 ### Phase 4: UI & Testing (Weeks 7-8)
 - Complete Gradio dashboard
-- End-to-end testing
+- Test context-aware decision making
 - Performance optimization
-- User training
+- User training on AI-driven workflows
 
 ## Budget Estimation
 
@@ -503,8 +657,9 @@ services:
 
 ### Recurring Costs (Monthly)
 - OpenAI API: ~$50-100 (depending on volume)
+- Together.ai API (Qwen2.5VL72B): ~$20-40 (for vision analysis)
 - Server hosting: ~$50 (if cloud deployed)
-- Total: ~$100-150/month
+- Total: ~$120-190/month
 
 ## Success Metrics
 
@@ -523,8 +678,24 @@ services:
    - Improved customer satisfaction
    - Better cash flow management
 
+## Key Advantages of Function Tools Architecture
+
+1. **Intelligent Context Handling**: The AI orchestrator understands email context, conversation history, and can make nuanced decisions rather than following rigid rules.
+
+2. **Flexible Workflows**: No need to predefine all possible scenarios - the system adapts dynamically to new situations.
+
+3. **Natural Language Processing**: Handles complex instructions like "urgent order with discount" or "modify previous order" intelligently.
+
+4. **Improved Error Handling**: AI can gracefully handle ambiguous situations and ask for clarification when needed.
+
+5. **Scalable Architecture**: Easy to add new agent tools without restructuring the entire system.
+
+6. **Enhanced Visual Understanding**: Dual approach with Qwen2.5VL72B for detailed tag analysis and CLIP for similarity search provides comprehensive multimodal capabilities.
+
 ## Conclusion
 
-This comprehensive system will transform your friend's factory operations by automating repetitive tasks while maintaining human oversight for critical decisions. The use of cutting-edge AI technologies with free, open-source tools ensures a cost-effective solution that can scale with the business.
+This comprehensive system will transform your friend's factory operations by automating repetitive tasks while maintaining human oversight for critical decisions. The adoption of the OpenAI function tools pattern with an AI-powered orchestrator provides superior context awareness and flexibility compared to traditional rule-based systems.
 
-The modular architecture allows for incremental implementation and easy maintenance, while the multi-agent design ensures each component can be optimized independently. With proper implementation, this system will significantly improve operational efficiency and customer satisfaction.
+The use of cutting-edge AI technologies with free, open-source tools ensures a cost-effective solution that can scale with the business. The function tools architecture allows the system to handle complex, context-dependent scenarios that would be difficult or impossible with hardcoded logic.
+
+With proper implementation, this system will significantly improve operational efficiency, handle edge cases intelligently, and provide a more natural interaction experience for managing the factory's email-driven workflow.
