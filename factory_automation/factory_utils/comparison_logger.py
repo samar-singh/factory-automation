@@ -18,7 +18,7 @@ class ComparisonLogger:
             log_dir: Directory to store comparison logs
         """
         if log_dir is None:
-            from config.settings import settings
+            from factory_config.settings import settings
             log_dir = settings.comparison_log_dir
         
         self.log_dir = Path(log_dir)

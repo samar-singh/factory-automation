@@ -5,7 +5,7 @@ from typing import List, Dict, Any, Optional
 import logging
 import numpy as np
 
-from config.settings import settings
+from factory_config.settings import settings
 
 logger = logging.getLogger(__name__)
 

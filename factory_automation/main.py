@@ -10,16 +10,16 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from gradio import mount_gradio_app
 
-from config.settings import settings
-from ui.gradio_app import create_dashboard
-from rag.chromadb_client import ChromaDBClient
-from database.models import init_db
+from factory_config.settings import settings
+from factory_ui.gradio_app import create_dashboard
+from factory_rag.chromadb_client import ChromaDBClient
+from factory_database.models import init_db
 
 # Dynamic orchestrator import based on settings
 if settings.use_ai_orchestrator:
-    from agents.orchestrator_v2 import OrchestratorAgentV2 as OrchestratorAgent
+    from factory_agents.orchestrator_v2_agent import OrchestratorAgentV2 as OrchestratorAgent
 else:
-    from agents.orchestrator import OrchestratorAgent
+    from factory_agents.orchestrator_agent import OrchestratorAgent
 
 # Configure logging
 logging.basicConfig(

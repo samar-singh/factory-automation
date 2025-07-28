@@ -9,7 +9,7 @@ Building an automated system for a garment price tag manufacturing factory to:
 - Track payments (UTR/cheques)
 - Provide real-time dashboard
 
-## Current Status (Last Updated: 2025-07-27)
+## Current Status (Last Updated: 2025-07-28)
 
 ### GitHub Repository
 - **URL**: https://github.com/samar-singh/factory-automation
@@ -44,10 +44,16 @@ Building an automated system for a garment price tag manufacturing factory to:
    - **NEW**: LiteLLM integration for Together.ai access
    - **NEW**: Combined embeddings approach for enhanced search
 
+5. **Code Organization** 🏗️
+   - **NEW**: Renamed all agent files to have `_agent.py` extension
+   - **NEW**: Renamed all folders to have `factory_` prefix
+   - **NEW**: Updated all imports throughout codebase
+   - **NEW**: Cleaned up .env file to match .env.example structure
+
 ### In Progress 🚧
-- API key acquisition (OpenAI, Together.ai)
+- OpenAI API key needs updating (current key invalid)
 - Database setup (ChromaDB + PostgreSQL)
-- Testing new orchestrator implementation
+- Installing missing dependencies (openai_agents module)
 - Creating sample inventory data
 
 ### Pending 📋
@@ -56,6 +62,8 @@ Building an automated system for a garment price tag manufacturing factory to:
 - Payment processing (OCR)
 - Testing with real data
 - Migration from v1 to v2 orchestrator
+- Implement missing agents (document_creator, payment_tracker, approval_manager)
+- Implement database CRUD operations
 
 ## Technical Stack
 - **Framework**: OpenAI Agents SDK with function tools pattern
@@ -91,12 +99,13 @@ Building an automated system for a garment price tag manufacturing factory to:
 - `/factory_automation/` - Main project directory
 - `/factory_automation/pyproject.toml` - Dependencies
 - `/factory_automation/main.py` - Entry point
-- `/factory_automation/agents/` - Agent implementations
-- `/factory_automation/agents/orchestrator_v2.py` - **NEW**: AI-powered orchestrator
-- `/factory_automation/agents/base.py` - Updated with as_tool() method
-- `/factory_automation/rag/multimodal_search.py` - **NEW**: Qwen2.5VL + CLIP search
-- `/factory_automation/config/settings.py` - **UPDATED**: Reads from config.yaml + .env
-- `/factory_automation/ui/gradio_app.py` - Dashboard
+- `/factory_automation/factory_agents/` - Agent implementations (renamed from agents/)
+- `/factory_automation/factory_agents/orchestrator_v2_agent.py` - AI-powered orchestrator
+- `/factory_automation/factory_agents/base.py` - Updated with as_tool() method
+- `/factory_automation/factory_rag/multimodal_search.py` - Qwen2.5VL + CLIP search
+- `/factory_automation/factory_config/settings.py` - Reads from config.yaml + .env
+- `/factory_automation/factory_ui/gradio_app.py` - Dashboard
+- `/test_api_keys.py` - **NEW**: API key verification script
 
 ## Next Steps
 1. Obtain API keys:
@@ -110,15 +119,18 @@ Building an automated system for a garment price tag manufacturing factory to:
 
 ## Notes
 - Customer provided example email showing full order lifecycle
-- Need Together AI API key for Qwen2.5VL72B vision model
+- Together AI API key is working (tested successfully)
 - System designed for ~50 emails/day volume
 - Budget updated: ~$120-190/month (includes Qwen2.5VL costs)
 - Created ROADMAP_PROGRESS_REPORT.md for tracking
-- Project is approximately 35% complete (major architecture improvements)
+- Project is approximately 40% complete (code organization improvements)
 - Function tools pattern enables intelligent context-aware processing
 - Dual multimodal approach provides best of both worlds
-- **NEW**: Configuration split - config.yaml for settings, .env for secrets
-- **NEW**: Settings can be overridden via environment variables
+- Configuration split - config.yaml for settings, .env for secrets
+- Settings can be overridden via environment variables
+- **NEW**: All agent files now use `_agent.py` naming convention
+- **NEW**: All project folders now use `factory_` prefix to avoid conflicts
+- **NEW**: OpenAI API key needs to be updated (current one is invalid)
 
 ## Commands & Tools
 - Using `uv` for Python package management

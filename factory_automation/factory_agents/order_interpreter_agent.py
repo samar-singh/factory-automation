@@ -1,5 +1,5 @@
 """Order interpretation agent for extracting order details."""
-from agents.base import BaseAgent
+from factory_agents.base import BaseAgent
 
 class OrderInterpreterAgent(BaseAgent):
     """Agent for interpreting order details from emails."""

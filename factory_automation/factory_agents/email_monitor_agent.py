@@ -2,7 +2,7 @@
 from typing import List, Dict, Any
 import logging
 
-from agents.base import BaseAgent
+from factory_agents.base import BaseAgent
 
 logger = logging.getLogger(__name__)
 

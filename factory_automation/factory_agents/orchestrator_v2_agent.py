@@ -5,15 +5,17 @@ import os
 import time
 from typing import Dict, Any, Optional
 from openai_agents import Agent, Runner
-from agents.base import BaseAgent
-from agents.email_monitor import EmailMonitorAgent
-from agents.order_interpreter import OrderInterpreterAgent
-from agents.inventory_matcher import InventoryMatcherAgent
-from agents.document_creator import DocumentCreatorAgent
-from agents.payment_tracker import PaymentTrackerAgent
-from agents.approval_manager import ApprovalManagerAgent
-from rag.chromadb_client import ChromaDBClient
-from database.crud import get_customer_history, get_thread_history
+from factory_agents.base import BaseAgent
+from factory_agents.email_monitor_agent import EmailMonitorAgent
+from factory_agents.order_interpreter_agent import OrderInterpreterAgent
+from factory_agents.inventory_matcher_agent import InventoryMatcherAgent
+# TODO: Implement these agents
+# from factory_agents.document_creator import DocumentCreatorAgent
+# from factory_agents.payment_tracker import PaymentTrackerAgent
+# from factory_agents.approval_manager import ApprovalManagerAgent
+from factory_rag.chromadb_client import ChromaDBClient
+# TODO: Implement database CRUD operations
+# from factory_database.crud import get_customer_history, get_thread_history
 
 logger = logging.getLogger(__name__)
 
@@ -75,9 +77,10 @@ class OrchestratorAgentV2:
         self.email_monitor = EmailMonitorAgent()
         self.order_interpreter = OrderInterpreterAgent()
         self.inventory_matcher = InventoryMatcherAgent(chromadb_client)
-        self.document_creator = DocumentCreatorAgent()
-        self.payment_tracker = PaymentTrackerAgent()
-        self.approval_manager = ApprovalManagerAgent()
+        # TODO: Implement these agents
+        # self.document_creator = DocumentCreatorAgent()
+        # self.payment_tracker = PaymentTrackerAgent()
+        # self.approval_manager = ApprovalManagerAgent()
         
         # Create orchestrator agent with all agents as tools
         self.agent = Agent(
@@ -96,18 +99,19 @@ class OrchestratorAgentV2:
                     tool_name="inventory_matcher",
                     tool_description="Search inventory for matching tags using multimodal RAG (text + image)"
                 ),
-                self.document_creator.as_tool(
-                    tool_name="document_creator",
-                    tool_description="Generate Pro-forma invoices and professional email responses"
-                ),
-                self.payment_tracker.as_tool(
-                    tool_name="payment_tracker",
-                    tool_description="Process payment confirmations, extract UTR/cheque details"
-                ),
-                self.approval_manager.as_tool(
-                    tool_name="approval_manager",
-                    tool_description="Get human approval for order matches and critical decisions"
-                ),
+                # TODO: Add these tools when agents are implemented
+                # self.document_creator.as_tool(
+                #     tool_name="document_creator",
+                #     tool_description="Generate Pro-forma invoices and professional email responses"
+                # ),
+                # self.payment_tracker.as_tool(
+                #     tool_name="payment_tracker",
+                #     tool_description="Process payment confirmations, extract UTR/cheque details"
+                # ),
+                # self.approval_manager.as_tool(
+                #     tool_name="approval_manager",
+                #     tool_description="Get human approval for order matches and critical decisions"
+                # ),
             ],
             model="gpt-4o",
         )
@@ -201,9 +205,9 @@ class OrchestratorAgentV2:
         estimated_cost = (estimated_tokens / 1000) * 0.03
         
         # Log for comparison if enabled
-        from config.settings import settings
+        from factory_config.settings import settings
         if settings.enable_comparison_logging:
-            from utils.comparison_logger import comparison_logger
+            from factory_utils.comparison_logger import comparison_logger
             comparison_logger.log_processing(
                 email_id=email_data.get('message_id', 'unknown'),
                 orchestrator_version="v2",

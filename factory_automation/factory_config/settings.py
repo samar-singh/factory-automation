@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     redis_password: Optional[str] = Field(None, description="Redis password")
     secret_key: str = Field("your-secret-key-here", description="App secret key")
     
-    # Configuration from config.yaml
+    # Configuration from factory_config.yaml
     config: Dict[str, Any] = Field(default_factory=dict)
     
     # Computed properties from config
@@ -123,23 +123,23 @@ class Settings(BaseSettings):
                 self.redis_url = f"redis://{redis_config['host']}:{redis_config['port']}/{redis_config.get('db', 0)}"
     
     def get_model_config(self) -> Dict[str, str]:
-        """Get model configuration from config.yaml."""
+        """Get model configuration from factory_config.yaml."""
         return self.config.get('models', {})
     
     def get_rag_config(self) -> Dict[str, Any]:
-        """Get RAG configuration from config.yaml."""
+        """Get RAG configuration from factory_config.yaml."""
         return self.config.get('rag', {})
     
     def get_processing_config(self) -> Dict[str, Any]:
-        """Get processing configuration from config.yaml."""
+        """Get processing configuration from factory_config.yaml."""
         return self.config.get('processing', {})
     
     def get_business_rules(self) -> Dict[str, Any]:
-        """Get business rules from config.yaml."""
+        """Get business rules from factory_config.yaml."""
         return self.config.get('business', {})
     
     def get_feature_flags(self) -> Dict[str, bool]:
-        """Get feature flags from config.yaml."""
+        """Get feature flags from factory_config.yaml."""
         return self.config.get('features', {})
     
     def get_chromadb_collections(self) -> Dict[str, str]:

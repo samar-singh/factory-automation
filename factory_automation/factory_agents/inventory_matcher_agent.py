@@ -1,6 +1,6 @@
 """Inventory matching agent using RAG."""
-from agents.base import BaseAgent
-from rag.chromadb_client import ChromaDBClient
+from factory_agents.base import BaseAgent
+from factory_rag.chromadb_client import ChromaDBClient
 
 class InventoryMatcherAgent(BaseAgent):
     """Agent for matching orders with inventory using RAG."""

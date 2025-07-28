@@ -5,7 +5,10 @@
       "Bash(uv venv:*)",
       "Bash(uv pip install:*)",
       "Bash(touch:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(mv:*)",
+      "Bash(ls:*)",
+      "Bash(python:*)"
     ],
     "deny": []
   }

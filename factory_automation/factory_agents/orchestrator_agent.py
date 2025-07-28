@@ -5,11 +5,11 @@ import os
 import time
 from typing import Dict, Any, Optional
 
-from agents.base import BaseAgent
-from agents.email_monitor import EmailMonitorAgent
-from agents.order_interpreter import OrderInterpreterAgent
-from agents.inventory_matcher import InventoryMatcherAgent
-from rag.chromadb_client import ChromaDBClient
+from factory_agents.base import BaseAgent
+from factory_agents.email_monitor_agent import EmailMonitorAgent
+from factory_agents.order_interpreter_agent import OrderInterpreterAgent
+from factory_agents.inventory_matcher_agent import InventoryMatcherAgent
+from factory_rag.chromadb_client import ChromaDBClient
 
 logger = logging.getLogger(__name__)
 
@@ -116,9 +116,9 @@ class OrchestratorAgent(BaseAgent):
             
         # Log for comparison if enabled
         processing_time = time.time() - start_time
-        from config.settings import settings
+        from factory_config.settings import settings
         if settings.enable_comparison_logging:
-            from utils.comparison_logger import comparison_logger
+            from factory_utils.comparison_logger import comparison_logger
             comparison_logger.log_processing(
                 email_id=email_data.get('message_id', 'unknown'),
                 orchestrator_version="v1",
