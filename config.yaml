@@ -1,0 +1,128 @@
+# Factory Automation System Configuration
+# This file contains all non-sensitive configuration options
+# API keys and secrets should be stored in .env file
+
+# Application Settings
+app:
+  environment: development  # development, staging, production
+  port: 8001
+  gradio_port: 7860
+  debug: true
+  log_level: INFO
+
+# Orchestrator Settings
+orchestrator:
+  use_ai_version: false  # false=v1 (traditional), true=v2 (AI-powered)
+  enable_comparison_logging: false  # Enable A/B testing between v1 and v2
+
+# Email Configuration
+email:
+  poll_interval: 300  # seconds (5 minutes)
+  folder: INBOX
+  max_results: 50  # Maximum emails to fetch per poll
+  
+# Gmail OAuth Settings (non-sensitive)
+gmail:
+  redirect_uri: http://localhost:8080
+  token_file: token.json
+  scopes:
+    - https://www.googleapis.com/auth/gmail.readonly
+    - https://www.googleapis.com/auth/gmail.send
+
+# Database Configuration (non-sensitive parts)
+database:
+  host: localhost
+  port: 5432
+  name: factory_automation
+  user: factory_user
+  # password should be in .env as DATABASE_PASSWORD
+
+# Redis Configuration
+redis:
+  host: localhost
+  port: 6379
+  db: 0
+  # password should be in .env as REDIS_PASSWORD
+
+# ChromaDB Configuration
+chromadb:
+  persist_directory: ./chroma_data
+  host: localhost
+  port: 8000
+  collection_names:
+    inventory: tag_inventory
+    orders: order_history
+    customers: customer_preferences
+
+# Model Configuration
+models:
+  # OpenAI models
+  orchestrator_model: gpt-4o  # For v2 orchestrator
+  agent_model: gpt-3.5-turbo  # For sub-agents
+  
+  # Vision models
+  vision_model: together_ai/Qwen/Qwen2.5-VL-72B-Instruct
+  
+  # Embedding models
+  text_embedding: all-MiniLM-L6-v2
+  image_embedding: ViT-B/32  # CLIP model
+
+# RAG Configuration
+rag:
+  chunk_size: 1000
+  chunk_overlap: 200
+  top_k: 10  # Number of results to retrieve
+  similarity_threshold: 0.7
+
+# Processing Configuration
+processing:
+  max_attachment_size: 10485760  # 10MB in bytes
+  supported_image_formats:
+    - jpg
+    - jpeg
+    - png
+    - gif
+    - bmp
+  supported_document_formats:
+    - pdf
+    - xlsx
+    - xls
+    - csv
+
+# Security Settings (non-sensitive)
+security:
+  jwt_algorithm: HS256
+  access_token_expire_minutes: 1440  # 24 hours
+  max_login_attempts: 5
+  password_min_length: 8
+
+# Monitoring & Logging
+monitoring:
+  comparison_log_dir: ./orchestrator_comparison_logs
+  log_retention_days: 30
+  metrics_enabled: true
+  
+# Feature Flags
+features:
+  payment_processing: false  # Not yet implemented
+  ocr_enabled: false  # Not yet implemented
+  auto_approval: false  # Require human approval
+  email_templates: true
+
+# Business Rules
+business:
+  working_hours:
+    start: "09:00"
+    end: "18:00"
+    timezone: "Asia/Kolkata"
+  auto_followup_days: 7
+  payment_reminder_days: 3
+  order_expiry_days: 30
+  
+# UI Configuration
+ui:
+  theme: default
+  items_per_page: 20
+  refresh_interval: 30  # seconds
+  date_format: "YYYY-MM-DD"
+  time_format: "HH:mm:ss"

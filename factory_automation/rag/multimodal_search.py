@@ -32,7 +32,8 @@ class MultimodalSearch:
         self.clip_model, self.preprocess = clip.load("ViT-B/32", device=self.device)
         
         # Configure LiteLLM for Qwen2.5VL
-        litellm.api_key = os.getenv("TOGETHER_API_KEY")
+        from config.settings import settings
+        litellm.api_key = settings.together_api_key
         
         logger.info("Multimodal search initialized")
     

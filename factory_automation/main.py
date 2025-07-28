@@ -12,9 +12,14 @@ from gradio import mount_gradio_app
 
 from config.settings import settings
 from ui.gradio_app import create_dashboard
-from agents.orchestrator import OrchestratorAgent
 from rag.chromadb_client import ChromaDBClient
 from database.models import init_db
+
+# Dynamic orchestrator import based on settings
+if settings.use_ai_orchestrator:
+    from agents.orchestrator_v2 import OrchestratorAgentV2 as OrchestratorAgent
+else:
+    from agents.orchestrator import OrchestratorAgent
 
 # Configure logging
 logging.basicConfig(
@@ -22,6 +27,12 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Log which orchestrator we're using after logger is configured
+if settings.use_ai_orchestrator:
+    logger.info("Using AI-powered orchestrator (v2) with function tools pattern")
+else:
+    logger.info("Using traditional orchestrator (v1) with handoff pattern")
 
 # Create FastAPI app
 app = FastAPI(
@@ -60,7 +71,8 @@ async def startup_event():
     await chromadb_client.initialize()
     
     # Initialize orchestrator agent
-    logger.info("Starting orchestrator agent...")
+    orchestrator_type = "AI-powered (v2)" if settings.use_ai_orchestrator else "Traditional (v1)"
+    logger.info(f"Starting {orchestrator_type} orchestrator agent...")
     orchestrator = OrchestratorAgent(chromadb_client)
     
     # Start email monitoring in background

@@ -1,6 +1,8 @@
 """Main orchestrator agent that coordinates all other agents."""
 import asyncio
 import logging
+import os
+import time
 from typing import Dict, Any, Optional
 
 from agents.base import BaseAgent
@@ -52,6 +54,10 @@ class OrchestratorAgent(BaseAgent):
         """
         logger.info(f"Processing email: {email_data.get('subject', 'No subject')}")
         
+        # Track processing time for comparison
+        import time
+        start_time = time.time()
+        
         try:
             # Step 1: Analyze email
             email_analysis = await self.email_monitor.run(
@@ -79,7 +85,7 @@ class OrchestratorAgent(BaseAgent):
                         context=order_details["context"]
                     )
                     
-                    return {
+                    result = {
                         "success": True,
                         "email_type": email_type,
                         "order_details": order_details["context"],
@@ -88,14 +94,14 @@ class OrchestratorAgent(BaseAgent):
                     
             elif email_type == "payment":
                 # Handle payment processing
-                return {
+                result = {
                     "success": True,
                     "email_type": email_type,
                     "message": "Payment email detected - processing not yet implemented"
                 }
                 
             else:
-                return {
+                result = {
                     "success": True,
                     "email_type": email_type,
                     "message": "Email type not requiring action"
@@ -103,10 +109,24 @@ class OrchestratorAgent(BaseAgent):
                 
         except Exception as e:
             logger.error(f"Error processing email: {str(e)}")
-            return {
+            result = {
                 "success": False,
                 "error": str(e)
             }
+            
+        # Log for comparison if enabled
+        processing_time = time.time() - start_time
+        from config.settings import settings
+        if settings.enable_comparison_logging:
+            from utils.comparison_logger import comparison_logger
+            comparison_logger.log_processing(
+                email_id=email_data.get('message_id', 'unknown'),
+                orchestrator_version="v1",
+                processing_time=processing_time,
+                result=result
+            )
+            
+        return result
     
     async def start_email_monitoring(self):
         """Start continuous email monitoring."""

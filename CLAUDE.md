@@ -80,10 +80,14 @@ Building an automated system for a garment price tag manufacturing factory to:
 5. Human-in-the-loop for critical approvals
 6. Gradio for easy-to-use dashboard
 7. **NEW**: AI-powered orchestrator for intelligent workflow routing
+8. **NEW**: Separated configuration (config.yaml) from secrets (.env)
 
 ## Important Files
 - `/factory_automation_plan.md` - Complete implementation plan (updated with function tools)
 - `/API_SETUP_GUIDE.md` - **NEW**: Detailed API configuration guide
+- `/CONFIGURATION_GUIDE.md` - **NEW**: How to use config.yaml + .env
+- `/config.yaml` - **NEW**: All non-sensitive configuration
+- `/.env.example` - **UPDATED**: Only API keys and secrets
 - `/factory_automation/` - Main project directory
 - `/factory_automation/pyproject.toml` - Dependencies
 - `/factory_automation/main.py` - Entry point
@@ -91,6 +95,7 @@ Building an automated system for a garment price tag manufacturing factory to:
 - `/factory_automation/agents/orchestrator_v2.py` - **NEW**: AI-powered orchestrator
 - `/factory_automation/agents/base.py` - Updated with as_tool() method
 - `/factory_automation/rag/multimodal_search.py` - **NEW**: Qwen2.5VL + CLIP search
+- `/factory_automation/config/settings.py` - **UPDATED**: Reads from config.yaml + .env
 - `/factory_automation/ui/gradio_app.py` - Dashboard
 
 ## Next Steps
@@ -112,6 +117,8 @@ Building an automated system for a garment price tag manufacturing factory to:
 - Project is approximately 35% complete (major architecture improvements)
 - Function tools pattern enables intelligent context-aware processing
 - Dual multimodal approach provides best of both worlds
+- **NEW**: Configuration split - config.yaml for settings, .env for secrets
+- **NEW**: Settings can be overridden via environment variables
 
 ## Commands & Tools
 - Using `uv` for Python package management

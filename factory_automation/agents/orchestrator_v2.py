@@ -1,6 +1,8 @@
 """AI-powered orchestrator agent using OpenAI function tools pattern."""
 import asyncio
 import logging
+import os
+import time
 from typing import Dict, Any, Optional
 from openai_agents import Agent, Runner
 from agents.base import BaseAgent
@@ -129,6 +131,10 @@ class OrchestratorAgentV2:
         """
         logger.info(f"Processing email: {email_data.get('subject', 'No subject')}")
         
+        # Track processing time and costs
+        import time
+        start_time = time.time()
+        
         try:
             # Get conversation history
             thread_history = await get_thread_history(email_data.get('thread_id'))
@@ -168,7 +174,7 @@ class OrchestratorAgentV2:
             )
             
             # Extract and return results
-            return {
+            processing_result = {
                 "success": True,
                 "email_id": email_data.get('message_id'),
                 "actions_taken": result.final_output,
@@ -180,11 +186,33 @@ class OrchestratorAgentV2:
             
         except Exception as e:
             logger.error(f"Error processing email: {str(e)}")
-            return {
+            processing_result = {
                 "success": False,
                 "email_id": email_data.get('message_id'),
                 "error": str(e)
             }
+        
+        # Calculate processing time and estimated cost
+        processing_time = time.time() - start_time
+        
+        # Estimate API cost (rough calculation)
+        # GPT-4 costs approximately $0.03 per 1K tokens
+        estimated_tokens = len(str(prompt)) / 4  # Rough token estimate
+        estimated_cost = (estimated_tokens / 1000) * 0.03
+        
+        # Log for comparison if enabled
+        from config.settings import settings
+        if settings.enable_comparison_logging:
+            from utils.comparison_logger import comparison_logger
+            comparison_logger.log_processing(
+                email_id=email_data.get('message_id', 'unknown'),
+                orchestrator_version="v2",
+                processing_time=processing_time,
+                result=processing_result,
+                api_cost=estimated_cost
+            )
+            
+        return processing_result
     
     async def handle_complex_request(self, request: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """Handle complex requests that don't come from email.
