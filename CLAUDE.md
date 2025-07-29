@@ -29,14 +29,13 @@ Building an automated system for a garment price tag manufacturing factory to:
    - Installed OpenAI Agents SDK (imported as `agents`)
    - Created configuration management system
    - Created API setup guide with verification script
-   - **NEW**: Fixed import issues - using `agents` module instead of `openai_agents`
+   - Fixed import issues - using `agents` module instead of `openai_agents`
 
 3. **Basic Implementation**
    - Base agent class using OpenAI Agents SDK
    - Added `as_tool()` method to base agent for function tools pattern
    - Orchestrator agent for workflow coordination
    - Created AI-powered orchestrator v2 with context awareness
-   - Placeholder agents for email, order, and inventory
    - ChromaDB client for vector operations
    - Gradio dashboard with full UI layout
 
@@ -44,7 +43,7 @@ Building an automated system for a garment price tag manufacturing factory to:
    - Implemented multimodal search with Qwen2.5VL + CLIP
    - LiteLLM integration for Together.ai access
    - Combined embeddings approach for enhanced search
-   - **NEW**: CLIP module installed and working
+   - CLIP module installed and working
 
 5. **Code Organization** 🏗️
    - Renamed all agent files to have `_agent.py` extension
@@ -53,32 +52,49 @@ Building an automated system for a garment price tag manufacturing factory to:
    - Cleaned up .env file to match .env.example structure
 
 6. **Database & Storage** 💾
-   - **NEW**: ChromaDB fully operational with persistent storage
-   - **NEW**: Created 10 sample inventory items with auto-generated images
-   - **NEW**: Text embeddings and search working (89% accuracy for "blue cotton tag")
-   - **NEW**: PostgreSQL installed and configured
-   - **NEW**: Database schema created with 7 tables
-   - **NEW**: SQLAlchemy models implemented for all tables
-   - **NEW**: Database connection tested successfully
+   - ChromaDB fully operational with persistent storage
+   - Created 10 sample inventory items with auto-generated images
+   - Text embeddings and search working (89% accuracy for "blue cotton tag")
+   - PostgreSQL installed and configured
+   - Database schema created with 7 tables
+   - SQLAlchemy models implemented for all tables
+   - Database connection tested successfully
 
 7. **API Configuration** 🔑
-   - **NEW**: OpenAI API key validated and working
-   - **NEW**: Together.ai API key validated and working
-   - **NEW**: Gmail credentials file in place
-   - **NEW**: SECRET_KEY generated for security
+   - OpenAI API key validated and working
+   - Together.ai API key validated and working
+   - Gmail credentials file in place
+   - SECRET_KEY generated for security
+
+8. **RAG-Based Inventory System** 🔍
+   - **NEW**: Implemented Excel to ChromaDB ingestion pipeline
+   - **NEW**: Integrated Stella-400M embeddings for superior search (fallback to all-MiniLM-L6-v2)
+   - **NEW**: Created HuggingFace embeddings manager supporting multiple models
+   - **NEW**: Successfully ingested 93 items from Excel inventory files
+   - **NEW**: RAG search working with 55-70% confidence scores
+   - **NEW**: Natural language order matching implemented
+
+9. **Gmail Integration** 📧
+   - **NEW**: Created Gmail agent with service account support
+   - **NEW**: Enhanced Gmail agent to process attachments (Excel, PDF, Images)
+   - **NEW**: Implemented order extraction from email body and attachments
+   - **NEW**: Combined email + attachment data for complete orders
+
+10. **End-to-End Testing** ✅
+   - **NEW**: Created interactive inventory search test
+   - **NEW**: Built order vs inventory matching demo
+   - **NEW**: Demonstrated confidence-based routing (auto-approve vs manual review)
+   - **NEW**: Tested complete flow: Email → Extract → RAG Search → Decision
 
 ### In Progress 🚧
-- Launch Gradio dashboard
-- Test end-to-end workflow
+- Connect real Gmail account for live testing
+- Launch Gradio dashboard for manual review queue
 
 ### Pending 📋
-- Gmail API integration (credentials ready, need to implement polling)
-- Excel inventory ingestion
-- Payment processing (OCR)
-- Testing with real data
-- Migration from v1 to v2 orchestrator
+- Payment processing (OCR for UTR/cheques)
+- Document generation (quotations, confirmations)
 - Implement missing agents (document_creator, payment_tracker, approval_manager)
-- Implement database CRUD operations
+- Production deployment
 
 ## Technical Stack
 - **Framework**: OpenAI Agents SDK with function tools pattern
@@ -144,7 +160,7 @@ Building an automated system for a garment price tag manufacturing factory to:
 - System designed for ~50 emails/day volume
 - Budget updated: ~$120-190/month (includes Qwen2.5VL costs)
 - Created ROADMAP_PROGRESS_REPORT.md for tracking
-- Project is approximately 50% complete (significant progress today)
+- Project is approximately **70% complete** (major progress on RAG and Gmail integration)
 - Function tools pattern enables intelligent context-aware processing
 - Dual database approach: ChromaDB for RAG, PostgreSQL for business logic
 - Configuration split - config.yaml for settings, .env for secrets
@@ -153,6 +169,10 @@ Building an automated system for a garment price tag manufacturing factory to:
 - All project folders now use `factory_` prefix to avoid conflicts
 - Sample inventory created with 10 items and auto-generated images
 - Database schema supports full order lifecycle tracking
+- **NEW**: RAG system successfully matching natural language orders to inventory
+- **NEW**: Stella-400M embeddings providing superior search accuracy
+- **NEW**: Gmail agent can process email attachments (Excel, PDF, Images)
+- **NEW**: Confidence-based routing working (auto-approve vs manual review)
 
 ## Commands & Tools
 - Using `uv` for Python package management

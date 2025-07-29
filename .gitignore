@@ -65,6 +65,7 @@ gradio_cached_examples/
 # Google API
 token.json
 credentials.json
+gmail_credentials.json
 
 # ML Models
 models/
@@ -83,3 +84,6 @@ data/
 tmp/
 temp/
 *.tmp
+
+# Claude settings
+.claude/settings.local.json
