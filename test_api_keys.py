@@ -8,7 +8,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent / "factory_automation"))
 
-from factory_automation.config.settings import settings
+from factory_automation.factory_config.settings import settings
 from openai import OpenAI
 import requests
 

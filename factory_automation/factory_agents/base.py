@@ -1,6 +1,6 @@
 """Base agent implementation using OpenAI Agents SDK."""
 from typing import List, Optional, Dict, Any, Callable
-from openai_agents import Agent, Runner, tool
+from agents import Agent, Runner, tool
 import logging
 
 logger = logging.getLogger(__name__)

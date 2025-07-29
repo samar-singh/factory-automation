@@ -4,7 +4,7 @@ import logging
 import os
 import time
 from typing import Dict, Any, Optional
-from openai_agents import Agent, Runner
+from agents import Agent, Runner
 from factory_agents.base import BaseAgent
 from factory_agents.email_monitor_agent import EmailMonitorAgent
 from factory_agents.order_interpreter_agent import OrderInterpreterAgent
