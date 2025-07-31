@@ -42,10 +42,17 @@ async def test_system():
     
     print(f"Search results for '{query}':")
     for i, result in enumerate(results):
-        print(f"  {i+1}. {result['metadata']['tag_code']} - {result['metadata']['description']}")
+        metadata = result['metadata']
+        # Handle different metadata structures
+        tag_name = metadata.get('tag_code', metadata.get('trim_name', 'Unknown'))
+        brand = metadata.get('brand', metadata.get('description', 'N/A'))
+        stock = metadata.get('stock', 'N/A')
+        
+        print(f"  {i+1}. {tag_name} - {brand}")
         print(f"     Similarity: {result['similarity']:.3f}")
-        print(f"     Price: ${result['metadata']['price']}")
-        print(f"     Stock: {result['metadata']['stock']}")
+        print(f"     Stock: {stock}")
+        if 'excel_source' in metadata:
+            print(f"     Source: {metadata['excel_source']}")
     
     # 3. Test configuration
     print("\n3. Testing Configuration...")

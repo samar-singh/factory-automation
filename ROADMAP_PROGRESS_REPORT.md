@@ -1,7 +1,7 @@
 # Factory Automation System - Roadmap Progress Report
 
 ## Project: Garment Price Tag Manufacturing Automation
-**Report Date**: 2025-07-29  
+**Report Date**: 2025-07-30  
 **Project Status**: 🟡 In Development (70% Complete)
 
 ---
@@ -32,6 +32,7 @@ The Factory Automation System is being developed to automate order processing fo
 - ⚠️ Gmail service account needs domain-wide delegation setup
 - ⚠️ Some Excel files have data quality issues (datetime objects, duplicates)
 - ⚠️ Stella-400M model download time (using all-MiniLM-L6-v2 as fallback)
+- ⚠️ **NEW**: Column-based parsing not scalable for diverse Excel formats
 
 ---
 
@@ -65,6 +66,7 @@ The Factory Automation System is being developed to automate order processing fo
 | Excel ingestion | ✅ Complete | Multi-format Excel reader implemented |
 | Embeddings optimization | ✅ Complete | Stella-400M + fallback models |
 | OCR capabilities | 🚧 Partial | Design complete, implementation pending |
+| AI-powered parser | 🆕 Planned | Intelligent schema detection for scalability |
 
 ### Phase 3: Agent Integration (Weeks 5-6) - 60% Complete 📋
 
@@ -176,6 +178,7 @@ The Factory Automation System is being developed to automate order processing fo
 - **Success Rate**: 25% of Excel files processed successfully
 - **Common Issues**: Datetime objects, string comparisons, duplicate IDs
 - **Embeddings**: 384-1024 dimensions depending on model
+- **Scalability Concern**: Hard-coded column mappings limit flexibility
 
 ---
 
@@ -192,12 +195,19 @@ The Factory Automation System is being developed to automate order processing fo
    - [ ] Create quotation generation
    - [ ] Add approval manager agent
    - [ ] Connect all agents to orchestrator
+   - [ ] **NEW**: Implement AI-powered Excel parser for scalability
 
 3. **Testing & Deployment**
    - [ ] Test with real customer emails
    - [ ] Benchmark with full inventory
    - [ ] Create user documentation
    - [ ] Deploy to production server
+
+4. **Scalability Improvements (NEW)**
+   - [ ] Phase 1: Implement IntelligentExcelParser alongside existing
+   - [ ] Test AI parser with problematic Excel files
+   - [ ] Create schema learning cache system
+   - [ ] Compare accuracy: traditional vs AI parsing
 
 ---
 
@@ -212,6 +222,7 @@ The Factory Automation System is being developed to automate order processing fo
 - Gmail authentication: Needs IT admin for domain setup
 - Data quality: Create Excel validation before ingestion
 - Model downloads: Consider pre-downloading models
+- **Scalability**: Current column mapping approach won't handle new formats
 
 ---
 
@@ -221,6 +232,7 @@ The Factory Automation System is being developed to automate order processing fo
 2. **Priority 2**: Complete Gmail domain setup for live testing
 3. **Priority 3**: Pre-download Stella-400M for production
 4. **Consider**: Early user testing with current capabilities
+5. **NEW Priority**: Implement AI-powered Excel parser to handle format variations
 
 ---
 
@@ -235,7 +247,9 @@ The Factory Automation System is being developed to automate order processing fo
 - ✅ `show_inventory.py` - Database inspection tool
 - ✅ `test_email_attachments.py` - Attachment processing demo
 - ✅ `ingest_inventory_fast.py` - Quick ingestion script
+- 🆕 `intelligent_excel_parser.py` - AI-powered schema detection (planned)
+- 🆕 `RAG_SCALABILITY_PLAN.md` - Roadmap for scalable Excel parsing
 
-**Report Generated**: 2025-07-29  
+**Report Generated**: 2025-07-30  
 **Project Completion**: 70%  
 **Next Review**: 2025-08-05

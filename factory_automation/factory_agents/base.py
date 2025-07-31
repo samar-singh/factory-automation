@@ -1,7 +1,7 @@
 """Base agent implementation using OpenAI Agents SDK."""
 from typing import List, Optional, Dict, Any, Callable
-from agents import Agent, Runner, tool
 import logging
+from agents import Agent, Runner, function_tool
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ class BaseAgent:
         name = tool_name or self.name.lower().replace(" ", "_")
         description = tool_description or f"Use the {self.name} agent to {self.agent.instructions[:100]}..."
         
-        @tool(name=name, description=description)
+        @function_tool(name=name, description=description)
         async def agent_tool(prompt: str, **kwargs) -> Dict[str, Any]:
             """Execute the agent with the given prompt and any additional context."""
             context = kwargs.get('context', {})

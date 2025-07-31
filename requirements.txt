@@ -16,7 +16,7 @@ google-api-python-client>=2.0.0
 sentence-transformers>=2.2.0
 torch>=2.0.0
 torchvision>=0.15.0
-clip-by-openai>=1.0.0
+# clip-by-openai>=1.0.0  # Commented out due to torchvision version conflict
 Pillow>=10.0.0
 
 # OCR

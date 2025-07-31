@@ -14,19 +14,23 @@ from factory_config.settings import settings
 from factory_ui.gradio_app import create_dashboard
 from factory_rag.chromadb_client import ChromaDBClient
 from factory_database.models import init_db
+from factory_utils.logging_config import setup_logging, get_logger
+
+# Configure structured logging
+setup_logging(
+    level=settings.get("log_level", "INFO"),
+    log_file=Path("logs/factory_automation.log") if settings.get("log_to_file", False) else None,
+    structured=settings.get("structured_logging", False),
+    colored=True
+)
+
+logger = get_logger(__name__)
 
 # Dynamic orchestrator import based on settings
 if settings.use_ai_orchestrator:
     from factory_agents.orchestrator_v2_agent import OrchestratorAgentV2 as OrchestratorAgent
 else:
     from factory_agents.orchestrator_agent import OrchestratorAgent
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 # Log which orchestrator we're using after logger is configured
 if settings.use_ai_orchestrator:

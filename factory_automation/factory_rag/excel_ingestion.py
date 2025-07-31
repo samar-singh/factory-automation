@@ -18,11 +18,12 @@ class ExcelInventoryIngestion:
     
     # Column mappings to handle variations across Excel files
     COLUMN_MAPPINGS = {
-        'code': ['TRIM CODE', 'TRIMCODE', 'CODE', 'ITEM CODE'],
-        'name': ['TRIM NAME', 'TAG NAME', 'NAME', 'ITEM NAME', 'DESCRIPTION'],
-        'stock': ['STOCK', 'QTY', ' QTY', 'QUANTITY', 'AVAILABLE'],
-        'image': ['TAGS IMAGE', 'TAG IMAGES', 'TAG IMAGE', 'IMAGE', 'IMAGES'],
-        'serial': ['S NO', 'S.NO', 'SL .NO', 'SR NO', 'SERIAL']
+        'code': ['TRIM CODE', 'TRIMCODE', 'CODE', 'ITEM CODE', 'SL.NO', 'TAG CODE'],
+        'name': ['TRIM NAME', 'TAG NAME', 'NAME', 'ITEM NAME', 'DESCRIPTION', 'THREAD NAME', 'THREAD NAME ', 'TAGNAME'],
+        'stock': ['STOCK', 'QTY', ' QTY', 'QUANTITY', 'AVAILABLE', 'INVENTORY'],
+        'image': ['TAGS IMAGE', 'TAG IMAGES', 'TAG IMAGE', 'IMAGE', 'IMAGES', 'THREAD IMAGE'],
+        'serial': ['S NO', 'S.NO', 'SL .NO', 'SR NO', 'SERIAL', 'SL.NO'],
+        'brand': ['BRAND', 'TRIMS BRAND', 'TAG BRAND']
     }
     
     def __init__(self, 
@@ -58,7 +59,11 @@ class ExcelInventoryIngestion:
         # Create reverse mapping
         for standard_name, variations in self.COLUMN_MAPPINGS.items():
             for col in df.columns:
-                if col.upper().strip() in [v.upper() for v in variations]:
+                # Convert column to string if it's not already (handles datetime objects)
+                col_str = str(col) if not isinstance(col, str) else col
+                
+                # Check if the column matches any variation
+                if col_str.upper().strip() in [v.upper() for v in variations]:
                     normalized_df.rename(columns={col: standard_name}, inplace=True)
                     break
                     
@@ -132,9 +137,16 @@ class ExcelInventoryIngestion:
             
             # Color attributes
             colors = []
-            for color in ['black', 'white', 'blue', 'red', 'green', 'gold', 'silver', 'purple', 'pink', 'grey', 'gray']:
+            for color in ['black', 'white', 'blue', 'red', 'green', 'gold', 'silver', 'purple', 'pink', 'grey', 'gray', 'navy', 'brown']:
                 if color in name_lower:
                     colors.append(color)
+            
+            # Also check for COLOUR column
+            if 'COLOUR' in row and pd.notna(row['COLOUR']):
+                color_value = str(row['COLOUR']).strip().lower()
+                if color_value and color_value not in colors:
+                    colors.append(color_value)
+                    
             if colors:
                 parts.append(f"Color: {', '.join(colors)}")
             
@@ -155,7 +167,7 @@ class ExcelInventoryIngestion:
                 parts.append("Feature: premium")
                 
         # Add stock status
-        stock = row.get('stock', 0)
+        stock = self._clean_stock_value(row.get('stock', 0))
         if stock > 0:
             parts.append(f"Stock available: {stock} units")
             parts.append("In stock")
@@ -172,20 +184,67 @@ class ExcelInventoryIngestion:
     
     def _create_document_id(self, row: pd.Series, brand: str) -> str:
         """Create unique document ID for ChromaDB"""
-        # Use code if available, otherwise use hash of content
+        # Use code if available and not NILL/NIL/empty
         if 'code' in row and pd.notna(row['code']):
-            return f"{brand}_{row['code']}".replace(' ', '_')
-        else:
-            content = f"{brand}_{row.get('name', '')}_{row.get('serial', '')}"
-            return hashlib.md5(content.encode()).hexdigest()
+            # Convert to string first (handles datetime or other objects)
+            code = str(row['code']).strip().upper()
+            # Check if code is actually meaningful
+            if code and code not in ['NILL', 'NIL', 'NA', '-', '']:
+                return f"{brand}_{code}".replace(' ', '_')
+        
+        # Otherwise use hash of all available data to ensure uniqueness
+        content_parts = [brand]
+        
+        # Add name if available
+        if 'name' in row and pd.notna(row['name']):
+            content_parts.append(str(row['name']).strip())
+        
+        # Add row index from original dataframe if available
+        if 'row_index' in row:
+            content_parts.append(str(row['row_index']))
+        
+        # Add any other identifying fields
+        for field in ['serial', 'stock', 'image']:
+            if field in row and pd.notna(row[field]):
+                content_parts.append(str(row[field]))
+        
+        # Create hash from combined content
+        content = "_".join(content_parts)
+        return hashlib.md5(content.encode()).hexdigest()
     
     def ingest_excel_file(self, file_path: str, batch_size: int = 100) -> Dict[str, Any]:
         """Ingest a single Excel file into ChromaDB with Stella embeddings"""
         logger.info(f"Ingesting Excel file: {file_path}")
         
         try:
-            # Read Excel file
+            # Read Excel file - first try with default header
             df = pd.read_excel(file_path)
+            
+            # Check if any column is a datetime object (indicates header might be in wrong row)
+            has_datetime_column = any(isinstance(col, pd.Timestamp) or hasattr(col, 'date') for col in df.columns)
+            
+            # Also check if columns are mostly unnamed (another indicator of wrong header)
+            unnamed_columns = sum(1 for col in df.columns if 'Unnamed' in str(col))
+            total_columns = len(df.columns)
+            mostly_unnamed = unnamed_columns > total_columns / 2
+            
+            # Check if file is PETER ENGLAND (specific case)
+            is_peter_england = 'PETER ENGLAND' in file_path.upper()
+            
+            # Don't re-read if columns look reasonable
+            has_name_column = any('NAME' in str(col).upper() for col in df.columns)
+            
+            if (has_datetime_column or is_peter_england) and not has_name_column:
+                logger.info(f"Detected header issue, re-reading with header=1")
+                # Re-read with header in second row
+                df = pd.read_excel(file_path, header=1)
+            elif mostly_unnamed and not has_name_column:
+                logger.info(f"Many unnamed columns, checking if header is in wrong row")
+                # Check if first row contains actual headers
+                first_row = df.iloc[0]
+                if any('NAME' in str(val).upper() for val in first_row.values if pd.notna(val)):
+                    logger.info(f"Found headers in first data row, re-reading with header=1")
+                    df = pd.read_excel(file_path, header=1)
             
             # Normalize columns
             df = self._normalize_column_names(df)
@@ -197,6 +256,7 @@ class ExcelInventoryIngestion:
             documents = []
             metadatas = []
             ids = []
+            id_counter = {}  # Track duplicate IDs
             
             for idx, row in df.iterrows():
                 # Skip rows with no meaningful data
@@ -224,9 +284,23 @@ class ExcelInventoryIngestion:
                     metadata['image_ref'] = str(row['image'])
                 else:
                     metadata['has_image'] = False
+                if 'COLOUR' in row and pd.notna(row['COLOUR']):
+                    metadata['colour'] = str(row['COLOUR']).strip()
+                if 'brand' in row and pd.notna(row['brand']):
+                    # Override file-based brand with Excel data brand
+                    metadata['brand'] = str(row['brand']).strip()
                 
-                # Create document ID
-                doc_id = self._create_document_id(row, brand)
+                # Create document ID (include row index for uniqueness)
+                row_with_index = row.copy()
+                row_with_index['row_index'] = idx
+                doc_id = self._create_document_id(row_with_index, brand)
+                
+                # Handle duplicate IDs by appending counter
+                if doc_id in id_counter:
+                    id_counter[doc_id] += 1
+                    doc_id = f"{doc_id}_{id_counter[doc_id]}"
+                else:
+                    id_counter[doc_id] = 0
                 
                 documents.append(text)
                 metadatas.append(metadata)

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(UV_PROJECT_ENVIRONMENT=../.venv uv pip install \"openai>=1.68.2\" \"openai-agents>=0.0.15\")"
+    ],
+    "deny": []
+  }
+}
