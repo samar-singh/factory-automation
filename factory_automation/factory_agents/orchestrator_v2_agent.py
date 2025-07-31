@@ -1,19 +1,21 @@
 """AI-powered orchestrator agent using OpenAI function tools pattern."""
-import asyncio
+
 import logging
-import os
 import time
-from typing import Dict, Any, Optional
+from typing import Any, Dict
+
 from agents import Agent, Runner
 from factory_agents.base import BaseAgent
 from factory_agents.email_monitor_agent import EmailMonitorAgent
-from factory_agents.order_interpreter_agent import OrderInterpreterAgent
 from factory_agents.inventory_matcher_agent import InventoryMatcherAgent
+from factory_agents.order_interpreter_agent import OrderInterpreterAgent
+
 # TODO: Implement these agents
 # from factory_agents.document_creator import DocumentCreatorAgent
 # from factory_agents.payment_tracker import PaymentTrackerAgent
 # from factory_agents.approval_manager import ApprovalManagerAgent
 from factory_rag.chromadb_client import ChromaDBClient
+
 # TODO: Implement database CRUD operations
 # from factory_database.crud import get_customer_history, get_thread_history
 
@@ -65,14 +67,15 @@ Make intelligent decisions based on the situation. If uncertain, use the
 approval_manager to get human input.
 """
 
+
 class OrchestratorAgentV2:
     """AI-powered orchestrator using function tools pattern."""
-    
+
     def __init__(self, chromadb_client: ChromaDBClient):
         """Initialize orchestrator with all sub-agents as tools."""
         self.chromadb_client = chromadb_client
         self.runner = Runner()
-        
+
         # Initialize sub-agents
         self.email_monitor = EmailMonitorAgent()
         self.order_interpreter = OrderInterpreterAgent()
@@ -81,7 +84,7 @@ class OrchestratorAgentV2:
         # self.document_creator = DocumentCreatorAgent()
         # self.payment_tracker = PaymentTrackerAgent()
         # self.approval_manager = ApprovalManagerAgent()
-        
+
         # Create orchestrator agent with all agents as tools
         self.agent = Agent(
             name="FactoryOrchestrator",
@@ -89,15 +92,15 @@ class OrchestratorAgentV2:
             tools=[
                 self.email_monitor.as_tool(
                     tool_name="email_monitor",
-                    tool_description="Analyze emails to determine type and extract key information"
+                    tool_description="Analyze emails to determine type and extract key information",
                 ),
                 self.order_interpreter.as_tool(
                     tool_name="order_interpreter",
-                    tool_description="Extract order details from emails and attachments, analyze tag images"
+                    tool_description="Extract order details from emails and attachments, analyze tag images",
                 ),
                 self.inventory_matcher.as_tool(
                     tool_name="inventory_matcher",
-                    tool_description="Search inventory for matching tags using multimodal RAG (text + image)"
+                    tool_description="Search inventory for matching tags using multimodal RAG (text + image)",
                 ),
                 # TODO: Add these tools when agents are implemented
                 # self.document_creator.as_tool(
@@ -115,12 +118,12 @@ class OrchestratorAgentV2:
             ],
             model="gpt-4o",
         )
-        
+
         logger.info("Initialized AI-powered orchestrator with function tools")
-        
+
     async def process_email(self, email_data: Dict[str, Any]) -> Dict[str, Any]:
         """Process an email with full context awareness.
-        
+
         Args:
             email_data: Email data dictionary containing:
                 - subject: Email subject
@@ -129,29 +132,31 @@ class OrchestratorAgentV2:
                 - attachments: List of attachments
                 - thread_id: Gmail thread ID
                 - message_id: Gmail message ID
-                
+
         Returns:
             Processing result with actions taken
         """
         logger.info(f"Processing email: {email_data.get('subject', 'No subject')}")
-        
+
         # Track processing time and costs
-        import time
         start_time = time.time()
-        
+
         try:
             # Get conversation history
-            thread_history = await get_thread_history(email_data.get('thread_id'))
-            customer_history = await get_customer_history(email_data.get('sender'))
-            
+            # TODO: Implement get_thread_history and get_customer_history
+            thread_history = []  # await get_thread_history(email_data.get("thread_id"))
+            customer_history = (
+                []
+            )  # await get_customer_history(email_data.get("sender"))
+
             # Prepare comprehensive context
             context = {
                 "current_email": email_data,
                 "thread_history": thread_history,
                 "customer_history": customer_history,
-                "timestamp": email_data.get('timestamp'),
+                "timestamp": email_data.get("timestamp"),
             }
-            
+
             # Construct prompt for the orchestrator
             prompt = f"""
             Process this email and take appropriate actions:
@@ -169,83 +174,73 @@ class OrchestratorAgentV2:
             Analyze the email intent and execute the appropriate workflow.
             Provide a summary of actions taken and results.
             """
-            
+
             # Let the AI orchestrator handle the email
-            result = await self.runner.run(
-                self.agent,
-                prompt,
-                context=context
-            )
-            
+            result = await self.runner.run(self.agent, prompt, context=context)
+
             # Extract and return results
             processing_result = {
                 "success": True,
-                "email_id": email_data.get('message_id'),
+                "email_id": email_data.get("message_id"),
                 "actions_taken": result.final_output,
                 "context_used": {
                     "thread_messages": len(thread_history),
-                    "customer_orders": len(customer_history)
-                }
+                    "customer_orders": len(customer_history),
+                },
             }
-            
+
         except Exception as e:
             logger.error(f"Error processing email: {str(e)}")
             processing_result = {
                 "success": False,
-                "email_id": email_data.get('message_id'),
-                "error": str(e)
+                "email_id": email_data.get("message_id"),
+                "error": str(e),
             }
-        
+
         # Calculate processing time and estimated cost
         processing_time = time.time() - start_time
-        
+
         # Estimate API cost (rough calculation)
         # GPT-4 costs approximately $0.03 per 1K tokens
         estimated_tokens = len(str(prompt)) / 4  # Rough token estimate
         estimated_cost = (estimated_tokens / 1000) * 0.03
-        
+
         # Log for comparison if enabled
         from factory_config.settings import settings
+
         if settings.enable_comparison_logging:
             from factory_utils.comparison_logger import comparison_logger
+
             comparison_logger.log_processing(
-                email_id=email_data.get('message_id', 'unknown'),
+                email_id=email_data.get("message_id", "unknown"),
                 orchestrator_version="v2",
                 processing_time=processing_time,
                 result=processing_result,
-                api_cost=estimated_cost
+                api_cost=estimated_cost,
             )
-            
+
         return processing_result
-    
-    async def handle_complex_request(self, request: str, context: Dict[str, Any]) -> Dict[str, Any]:
+
+    async def handle_complex_request(
+        self, request: str, context: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle complex requests that don't come from email.
-        
+
         Args:
             request: Natural language request
             context: Additional context
-            
+
         Returns:
             Processing result
         """
         try:
-            result = await self.runner.run(
-                self.agent,
-                request,
-                context=context
-            )
-            
-            return {
-                "success": True,
-                "result": result.final_output
-            }
-            
+            result = await self.runner.run(self.agent, request, context=context)
+
+            return {"success": True, "result": result.final_output}
+
         except Exception as e:
             logger.error(f"Error handling request: {str(e)}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return {"success": False, "error": str(e)}
 
 
 # Placeholder classes for agents that don't exist yet
@@ -253,19 +248,21 @@ class DocumentCreatorAgent(BaseAgent):
     def __init__(self):
         super().__init__(
             name="Document Creator",
-            instructions="Generate Pro-forma invoices and professional email responses."
+            instructions="Generate Pro-forma invoices and professional email responses.",
         )
+
 
 class PaymentTrackerAgent(BaseAgent):
     def __init__(self):
         super().__init__(
             name="Payment Tracker",
-            instructions="Process payment confirmations and extract UTR/cheque details."
+            instructions="Process payment confirmations and extract UTR/cheque details.",
         )
+
 
 class ApprovalManagerAgent(BaseAgent):
     def __init__(self):
         super().__init__(
             name="Approval Manager",
-            instructions="Coordinate human approval for critical decisions."
+            instructions="Coordinate human approval for critical decisions.",
         )

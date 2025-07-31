@@ -1,25 +1,28 @@
 """Database connection and session management."""
-import os
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import NullPool
-from contextlib import contextmanager
-import logging
 
-from factory_config.settings import settings
+import logging
+import os
+from contextlib import contextmanager
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 logger = logging.getLogger(__name__)
 
 # Create engine
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://samarsingh@localhost:5432/factory_automation")
+DATABASE_URL = os.getenv(
+    "DATABASE_URL", "postgresql://samarsingh@localhost:5432/factory_automation"
+)
 engine = create_engine(
     DATABASE_URL,
     poolclass=NullPool,  # Disable connection pooling for simplicity
-    echo=False  # Set to True for SQL debugging
+    echo=False,  # Set to True for SQL debugging
 )
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
 
 @contextmanager
 def get_db() -> Session:
@@ -35,9 +38,11 @@ def get_db() -> Session:
     finally:
         db.close()
 
+
 def init_database():
     """Initialize database tables."""
     from factory_database.models import Base
+
     try:
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables initialized")

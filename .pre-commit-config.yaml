@@ -32,7 +32,7 @@ repos:
           types-requests,
           types-PyYAML,
           pydantic,
-          sqlalchemy[mypy]
+          sqlalchemy[mypy],
         ]
         args: [--ignore-missing-imports]
 

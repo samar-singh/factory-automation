@@ -113,3 +113,10 @@ ensure_newline_before_comments = true
 [tool.bandit]
 exclude_dirs = ["tests", "factory_tests", ".venv"]
 skips = ["B101"]  # Skip assert_used test
+
+[dependency-groups]
+dev = [
+    "isort>=6.0.1",
+    "mypy>=1.17.0",
+    "types-pyyaml>=6.0.12.20250516",
+]

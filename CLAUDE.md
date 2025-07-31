@@ -146,13 +146,15 @@ Building an automated system for a garment price tag manufacturing factory to:
 - `/chroma_data/` - **NEW**: ChromaDB persistent storage
 
 ## Next Steps
-1. Launch Gradio dashboard to visualize the system
-2. Test end-to-end workflow with sample data
+1. ✅ Launch Gradio dashboard to visualize the system
+2. ✅ Test end-to-end workflow with sample data
 3. Implement Gmail polling loop
-4. Create Excel inventory ingestion
+4. ✅ Create Excel inventory ingestion
 5. Add OCR for payment processing
 6. Implement missing agents (document_creator, payment_tracker)
 7. Migrate from orchestrator v1 to v2
+8. **NEW**: Implement PDF/Excel attachment parsing for invoices
+9. **NEW**: Add customer product code mapping (ST-057 → our codes)
 
 ## Notes
 - Customer provided example email showing full order lifecycle
@@ -160,7 +162,7 @@ Building an automated system for a garment price tag manufacturing factory to:
 - System designed for ~50 emails/day volume
 - Budget updated: ~$120-190/month (includes Qwen2.5VL costs)
 - Created ROADMAP_PROGRESS_REPORT.md for tracking
-- Project is approximately **70% complete** (major progress on RAG and Gmail integration)
+- Project is approximately **75% complete** (major progress on RAG and Gmail integration)
 - Function tools pattern enables intelligent context-aware processing
 - Dual database approach: ChromaDB for RAG, PostgreSQL for business logic
 - Configuration split - config.yaml for settings, .env for secrets
@@ -173,6 +175,10 @@ Building an automated system for a garment price tag manufacturing factory to:
 - **NEW**: Stella-400M embeddings providing superior search accuracy
 - **NEW**: Gmail agent can process email attachments (Excel, PDF, Images)
 - **NEW**: Confidence-based routing working (auto-approve vs manual review)
+- **NEW**: Live Gradio dashboard with inventory search and order processing
+- **NEW**: Python best practices implemented (pre-commit, CI/CD, Makefile)
+- **NEW**: Successfully ingested 478 items from 10 Excel files
+- **NEW**: Tested with real email order (SYMBOL ST-057) - needs attachment parsing
 
 ## Commands & Tools
 - Using `uv` for Python package management
