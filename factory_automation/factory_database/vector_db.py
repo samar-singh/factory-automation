@@ -12,9 +12,14 @@ logger = logging.getLogger(__name__)
 class ChromaDBClient:
     """Synchronous client for interacting with ChromaDB."""
 
-    def __init__(self, persist_directory: str = "./chroma_data"):
+    def __init__(
+        self,
+        persist_directory: str = "./chroma_data",
+        collection_name: str = "tag_inventory",
+    ):
         """Initialize ChromaDB client."""
         self.persist_directory = persist_directory
+        self.collection_name = collection_name
 
         # Create persistent client
         self.client = chromadb.PersistentClient(
@@ -24,7 +29,7 @@ class ChromaDBClient:
 
         # Get or create inventory collection
         self.collection = self.client.get_or_create_collection(
-            name="tag_inventory", metadata={"hnsw:space": "cosine"}
+            name=self.collection_name, metadata={"hnsw:space": "cosine"}
         )
 
         logger.info(f"ChromaDB initialized at {self.persist_directory}")

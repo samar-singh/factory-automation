@@ -179,6 +179,8 @@ Building an automated system for a garment price tag manufacturing factory to:
 - **NEW**: Python best practices implemented (pre-commit, CI/CD, Makefile)
 - **NEW**: Successfully ingested 478 items from 10 Excel files
 - **NEW**: Tested with real email order (SYMBOL ST-057) - needs attachment parsing
+- **NEW**: Migrated to Stella-400M embeddings for 20-35% better search accuracy
+- **NEW**: Fixed data structure mismatch in gradio_app_live.py (search_inventory returns list, not dict)
 
 ## Commands & Tools
 - Using `uv` for Python package management

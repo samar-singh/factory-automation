@@ -27,14 +27,15 @@ def create_live_dashboard():
 
     # Initialize ChromaDB connection
     try:
-        chroma_client = ChromaDBClient()
+        # Use the new Stella collection
+        chroma_client = ChromaDBClient(collection_name="tag_inventory_stella")
         collection = chroma_client.collection
         total_items = collection.count()
-        print(f"Connected to ChromaDB: {total_items} items in inventory")
+        print(f"Connected to ChromaDB (Stella): {total_items} items in inventory")
 
-        # Initialize ingestion for search
+        # Initialize ingestion for search with Stella embeddings
         ingestion = ExcelInventoryIngestion(
-            chroma_client=chroma_client, embedding_model="all-MiniLM-L6-v2"
+            chroma_client=chroma_client, embedding_model="stella-400m"
         )
     except Exception as e:
         print(f"Error connecting to ChromaDB: {e}")
@@ -89,15 +90,16 @@ def create_live_dashboard():
                         )
 
                         # Format results for display
-                        if results["matches"]:
+                        if results:
                             data = []
-                            for match in results["matches"]:
+                            for match in results:
+                                metadata = match.get("metadata", {})
                                 data.append(
                                     {
-                                        "Item": match["item_name"],
-                                        "Brand": match["brand"],
-                                        "Stock": f"{match['available_stock']} units",
-                                        "Confidence %": f"{match['confidence_score']*100:.1f}%",
+                                        "Item": metadata.get("trim_name", "Unknown"),
+                                        "Brand": metadata.get("brand", "Unknown"),
+                                        "Stock": f"{metadata.get('stock', 0)} units",
+                                        "Confidence %": f"{match.get('score', 0)*100:.1f}%",
                                         "Match Reason": match.get(
                                             "match_reason", "Text similarity"
                                         ),
@@ -174,19 +176,26 @@ def create_live_dashboard():
 
                         for line in lines:
                             # Search for the item
-                            search_result = ingestion.search_inventory(
+                            search_results = ingestion.search_inventory(
                                 query=line, limit=1
                             )
 
-                            if search_result["matches"]:
-                                match = search_result["matches"][0]
+                            if search_results:
+                                match = search_results[0]
+                                metadata = match.get("metadata", {})
+                                stock = metadata.get("stock", 0)
+                                confidence_score = match.get("score", 0)
+                                product_name = metadata.get(
+                                    "trim_name", "Unknown Product"
+                                )
+                                brand = metadata.get("brand", "Unknown")
 
                                 # Check stock
-                                if match["available_stock"] > 0:
+                                if stock > 0:
                                     # status = "✅ In Stock"
                                     action = (
                                         "Auto-approve"
-                                        if match["confidence_score"] > 0.8
+                                        if confidence_score > 0.8
                                         else "Review"
                                     )
                                 else:
@@ -194,7 +203,7 @@ def create_live_dashboard():
                                     action = "Find alternative"
                                     auto_approve = False
 
-                                if match["confidence_score"] < 0.7:
+                                if confidence_score < 0.7:
                                     auto_approve = False
 
                                 results.append(
@@ -204,9 +213,9 @@ def create_live_dashboard():
                                             if len(line) > 50
                                             else line
                                         ),
-                                        "Best Match": match["item_name"],
-                                        "Stock Status": f"{match['available_stock']} units",
-                                        "Confidence": f"{match['confidence_score']*100:.1f}%",
+                                        "Best Match": f"{brand} - {product_name}",
+                                        "Stock Status": f"{stock} units",
+                                        "Confidence": f"{confidence_score*100:.1f}%",
                                         "Action": action,
                                     }
                                 )
