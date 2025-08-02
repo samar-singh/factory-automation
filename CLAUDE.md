@@ -162,11 +162,13 @@ Building an automated system for a garment price tag manufacturing factory to:
 
 ## Known Issues & Limitations
 
-1. **Email Parsing**: Regex patterns need improvement for item extraction
-2. **Type Errors**: 122 mypy errors need resolution
-3. **Excel Formats**: Some files have datetime/duplicate issues
-4. **Gmail Auth**: Requires IT admin for domain delegation
-5. **Attachment Parsing**: Not yet implemented for orders
+1. **AI Disconnect**: LLMs/VLMs are implemented but NOT connected to the main flow
+2. **Email Parsing**: Regex patterns need improvement for item extraction
+3. **Type Errors**: 122 mypy errors need resolution
+4. **Excel Formats**: Some files have datetime/duplicate issues
+5. **Gmail Auth**: Requires IT admin for domain delegation
+6. **Attachment Parsing**: Not yet implemented for orders
+7. **Orchestrator Integration**: The AI brain exists but isn't wired to the UI
 
 ## Budget & Resources
 
@@ -197,13 +199,22 @@ git status
 git commit -m "feat: description"
 ```
 
-## Next Immediate Tasks
+## Critical Discovery (2025-08-02)
 
-1. Fix mypy type errors for better code quality
-2. Implement Gmail polling loop
-3. Add attachment parsing for Excel/PDF orders
-4. Create customer code mapping system
-5. Deploy to production environment
+**The AI components (GPT-4, Qwen2.5VL) are built but NOT connected!**
+- Gradio UI only uses embeddings for search
+- Orchestrator agent exists but isn't integrated
+- No actual LLM/VLM calls in the current flow
+- System is "smart-ready" but running in "dumb mode"
+
+## Next Immediate Tasks (Priority Order)
+
+1. **Connect AI Brain**: Wire orchestrator to Gradio UI (Option A)
+2. **Enable LLM Processing**: Use GPT-4 for email/order parsing
+3. **Fix Type Errors**: Resolve 122 mypy issues
+4. **Gmail Integration**: Implement polling loop
+5. **Complete Agents**: Document creator, payment tracker
+6. **Production Deploy**: Docker + proper error handling
 
 ## Contact & Support
 

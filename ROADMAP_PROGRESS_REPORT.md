@@ -1,7 +1,8 @@
 # Factory Automation System - Roadmap Progress Report
 
 ## Project: Garment Price Tag Manufacturing Automation
-**Report Date**: 2025-08-02  
+
+**Report Date**: 2025-08-02
 **Project Status**: 🟡 In Development (80% Complete)
 
 ---
@@ -10,14 +11,19 @@
 
 The Factory Automation System is being developed to automate order processing for a garment price tag manufacturing factory. The system now features a working RAG-based inventory matching system with Gmail integration for processing orders from emails and attachments.
 
+**CRITICAL INSIGHT**: While all AI components (GPT-4, Qwen2.5VL, orchestrator) are built and ready, they are NOT connected to the main application flow. The system currently operates using only embeddings-based search, missing the intelligent processing capabilities that have been implemented.
+
 ### Key Achievements Today
+
 - ✅ **Stella-400M Migration**: Migrated to advanced embeddings for 20-35% better accuracy
 - ✅ **Fixed Gradio Exception**: Resolved data structure mismatch in search results
 - ✅ **End-to-End Testing**: Successfully tested complete email → search → decision flow
 - ✅ **Collection Management**: ChromaDB now supports multiple collections
 - ✅ **Performance Analysis**: Documented trade-offs (2.4s vs 0.1s query time)
+- 🔍 **Critical Discovery**: AI components (GPT-4, Qwen2.5VL) exist but are NOT connected to the main flow
 
 ### Major Milestones Completed
+
 - ✅ Comprehensive implementation plan created
 - ✅ Project foundation established with modern tech stack
 - ✅ Multi-agent architecture with OpenAI Agents SDK
@@ -29,10 +35,13 @@ The Factory Automation System is being developed to automate order processing fo
 - ✅ GitHub repository active
 
 ### Current Blockers
+
+- 🚨 **AI Integration Gap**: LLMs/VLMs built but not connected to UI/workflow
 - ⚠️ Gmail service account needs domain-wide delegation setup
 - ⚠️ Email parsing regex needs improvement for better item extraction
 - ⚠️ Type errors in mypy checks need resolution
 - ⚠️ Need to implement attachment parsing (Excel/PDF) from emails
+- ⚠️ Orchestrator agent not integrated with Gradio dashboard
 
 ---
 
@@ -44,7 +53,7 @@ The Factory Automation System is being developed to automate order processing fo
 |------|--------|---------|
 | Set up development environment | ✅ Complete | Using uv package manager |
 | Configure project structure | ✅ Complete | Modular architecture established |
-| Initialize git repository | ✅ Complete | https://github.com/samar-singh/factory-automation |
+| Initialize git repository | ✅ Complete | <https://github.com/samar-singh/factory-automation> |
 | Install dependencies | ✅ Complete | All packages installed via uv |
 | Create base agent framework | ✅ Complete | OpenAI Agents SDK with function tools |
 | Design system architecture | ✅ Complete | AI-powered orchestrator pattern |
@@ -128,6 +137,7 @@ The Factory Automation System is being developed to automate order processing fo
 ### Current System Capabilities
 
 1. **Order Processing Flow**
+
    ```
    Email → Extract Orders → RAG Search → Confidence Score → Routing Decision
      ↓                        ↓              ↓                   ↓
@@ -136,7 +146,7 @@ The Factory Automation System is being developed to automate order processing fo
 
 2. **Match Accuracy**
    - VH tags: 55-70% confidence
-   - FM tags: 60-65% confidence  
+   - FM tags: 60-65% confidence
    - Brand-specific searches: Higher accuracy
    - Natural language queries: Working well
 
@@ -169,12 +179,14 @@ The Factory Automation System is being developed to automate order processing fo
 ## Key Metrics
 
 ### Performance
+
 - **Ingestion**: 93 items from 12 Excel files (3 successful)
 - **Search Speed**: <100ms with all-MiniLM-L6-v2
 - **Match Accuracy**: 55-70% confidence scores
 - **Stock Checking**: 100% accurate when items found
 
 ### Data Quality
+
 - **Success Rate**: 25% of Excel files processed successfully
 - **Common Issues**: Datetime objects, string comparisons, duplicate IDs
 - **Embeddings**: 384-1024 dimensions depending on model
@@ -184,10 +196,11 @@ The Factory Automation System is being developed to automate order processing fo
 
 ## Next Sprint Goals (Week of 2025-08-05)
 
-1. **Immediate Actions**
-   - [ ] Fix Excel data quality issues
-   - [ ] Set up Gmail domain delegation
-   - [ ] Download Stella-400M model completely
+1. **Immediate Actions (Option A - Make it Smart)**
+   - [ ] Connect orchestrator agent to Gradio UI
+   - [ ] Enable GPT-4 processing in the main flow
+   - [ ] Test end-to-end with actual AI decision making
+   - [ ] Wire up Qwen2.5VL for visual analysis
    - [ ] Launch Gradio dashboard with live data
 
 2. **Development Tasks**
@@ -214,11 +227,13 @@ The Factory Automation System is being developed to automate order processing fo
 ## Risk Mitigation
 
 ### Resolved Risks ✅
+
 - API key issues: All validated and working
 - Import errors: Fixed module references
 - Database setup: Both ChromaDB and PostgreSQL operational
 
 ### Active Risks 🟡
+
 - Gmail authentication: Needs IT admin for domain setup
 - Data quality: Create Excel validation before ingestion
 - Model downloads: Consider pre-downloading models
@@ -228,10 +243,14 @@ The Factory Automation System is being developed to automate order processing fo
 
 ## Recommendations
 
-1. **Priority 1**: Fix Excel data quality for better ingestion rate
-2. **Priority 2**: Complete Gmail domain setup for live testing
-3. **Priority 3**: Pre-download Stella-400M for production
-4. **Consider**: Early user testing with current capabilities
+1. **URGENT Priority**: Connect AI components to make system actually intelligent
+   - Wire orchestrator agent to Gradio UI
+   - Enable GPT-4 for email/order parsing
+   - Integrate Qwen2.5VL for image analysis
+2. **Priority 2**: Fix Excel data quality for better ingestion rate
+3. **Priority 3**: Complete Gmail domain setup for live testing
+4. **Priority 4**: Implement missing agents (document creator, payment tracker)
+5. **Critical**: The system has all AI pieces but runs in "dumb mode" currently
 5. **NEW Priority**: Implement AI-powered Excel parser to handle format variations
 
 ---
@@ -250,6 +269,6 @@ The Factory Automation System is being developed to automate order processing fo
 - 🆕 `intelligent_excel_parser.py` - AI-powered schema detection (planned)
 - 🆕 `RAG_SCALABILITY_PLAN.md` - Roadmap for scalable Excel parsing
 
-**Report Generated**: 2025-07-31  
-**Project Completion**: 75%  
+**Report Generated**: 2025-07-31
+**Project Completion**: 75%
 **Next Review**: 2025-08-05
