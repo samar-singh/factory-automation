@@ -26,9 +26,8 @@ class Settings(BaseSettings):
     # API Keys and Secrets (from .env only)
     openai_api_key: str = Field(..., description="OpenAI API key")
     together_api_key: Optional[str] = Field(None, description="Together AI API key")
-    gmail_client_id: Optional[str] = Field(None, description="Gmail OAuth client ID")
-    gmail_client_secret: Optional[str] = Field(
-        None, description="Gmail OAuth client secret"
+    gmail_delegated_email: Optional[str] = Field(
+        None, description="Email to monitor for orders"
     )
     database_password: Optional[str] = Field(
         "password", description="Database password"
@@ -44,6 +43,7 @@ class Settings(BaseSettings):
     app_port: int = Field(default=8001)
     gradio_port: int = Field(default=7860)
     use_ai_orchestrator: bool = Field(default=False)
+    orchestrator_version: str = Field(default="v2")
     enable_comparison_logging: bool = Field(default=False)
     email_poll_interval: int = Field(default=300)
     email_folder: str = Field(default="INBOX")
@@ -95,6 +95,10 @@ class Settings(BaseSettings):
                     kwargs.setdefault(
                         "enable_comparison_logging",
                         orch_config.get("enable_comparison_logging", False),
+                    )
+                    kwargs.setdefault(
+                        "orchestrator_version",
+                        orch_config.get("version", "v2"),
                     )
 
                     # Email settings

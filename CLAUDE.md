@@ -11,7 +11,7 @@ Building an automated system for a garment price tag manufacturing factory to:
 - Track payments (UTR/cheques)
 - Provide real-time dashboard
 
-## Current Status (Last Updated: 2025-08-02)
+## Current Status (Last Updated: 2025-08-03)
 
 ### GitHub Repository
 
@@ -151,24 +151,24 @@ Building an automated system for a garment price tag manufacturing factory to:
 - `/test_system.py` - Comprehensive system test
 - `/factory_automation/factory_tests/` - Test suite
 
-## Recent Updates (2025-08-02)
+## Recent Updates (2025-08-03)
 
-- ✅ Migrated to Stella-400M embeddings (20-35% accuracy improvement)
-- ✅ Fixed search_inventory data structure (returns list, not dict)
-- ✅ Enabled multi-collection support in ChromaDB
-- ✅ Updated Gradio app to use Stella collection
-- ✅ Comprehensive testing of email → search → decision flow
-- ✅ Documentation updates reflecting current state
+- ✅ Implemented agentic orchestrator with OpenAI Agents SDK
+- ✅ Fixed schema validation issues (Dict[str, Any] → str returns)
+- ✅ Added tool call tracking with TrackedOrchestratorV3
+- ✅ Designed human-orchestrator interaction system
+- ✅ Gmail polling loop implemented with mock testing
+- ✅ Comprehensive test suite for agentic features
+- ✅ Code formatting and linting cleanup
 
 ## Known Issues & Limitations
 
-1. **AI Disconnect**: LLMs/VLMs are implemented but NOT connected to the main flow
-2. **Email Parsing**: Regex patterns need improvement for item extraction
-3. **Type Errors**: 122 mypy errors need resolution
+1. **Type Errors**: 122 mypy errors need resolution
+2. **Gmail Auth**: Requires IT admin for domain delegation
+3. **Attachment Parsing**: Not yet implemented for orders
 4. **Excel Formats**: Some files have datetime/duplicate issues
-5. **Gmail Auth**: Requires IT admin for domain delegation
-6. **Attachment Parsing**: Not yet implemented for orders
-7. **Orchestrator Integration**: The AI brain exists but isn't wired to the UI
+5. **Visual Analysis**: Qwen2.5VL ready but not wired for production
+6. **Human Interaction**: System designed but not fully implemented
 
 ## Budget & Resources
 
@@ -189,7 +189,8 @@ make check     # Run linters
 make test      # Run tests
 
 # Run Application
-python -m factory_automation.factory_ui.gradio_app_live
+python -m factory_automation.factory_ui.gradio_app_live  # Basic UI
+python launch_ai_app.py  # AI-Enhanced UI (recommended)
 
 # Database
 psql -U postgres -d factory_automation
@@ -199,22 +200,26 @@ git status
 git commit -m "feat: description"
 ```
 
-## Critical Discovery (2025-08-02)
+## AI Integration Update (2025-08-03)
 
-**The AI components (GPT-4, Qwen2.5VL) are built but NOT connected!**
-- Gradio UI only uses embeddings for search
-- Orchestrator agent exists but isn't integrated
-- No actual LLM/VLM calls in the current flow
-- System is "smart-ready" but running in "dumb mode"
+**AI Components NOW CONNECTED! 🎉**
+- ✅ GPT-4 orchestrator integrated via AI bridge
+- ✅ New AI-enhanced Gradio dashboard (gradio_app_ai.py)
+- ✅ Natural language order processing active
+- ✅ Intelligent search with query enhancement
+- ⏳ Qwen2.5VL ready but not yet wired for visual analysis
+- 🚀 System upgraded from "dumb mode" to "AI-powered mode"
 
 ## Next Immediate Tasks (Priority Order)
 
-1. **Connect AI Brain**: Wire orchestrator to Gradio UI (Option A)
-2. **Enable LLM Processing**: Use GPT-4 for email/order parsing
-3. **Fix Type Errors**: Resolve 122 mypy issues
-4. **Gmail Integration**: Implement polling loop
-5. **Complete Agents**: Document creator, payment tracker
-6. **Production Deploy**: Docker + proper error handling
+1. ✅ ~~Connect AI Brain: Wire orchestrator to Gradio UI~~ DONE!
+2. ✅ ~~Enable LLM Processing: Use GPT-4 for email/order parsing~~ DONE!
+3. ✅ ~~Implement Agentic Orchestrator: OpenAI Agents SDK with tools~~ DONE!
+4. **Human Interaction**: Implement human-orchestrator interface
+5. **Wire Qwen2.5VL**: Enable visual tag analysis
+6. **Fix Type Errors**: Resolve 122 mypy issues
+7. **Complete Agents**: Document creator, payment tracker
+8. **Production Deploy**: Docker + proper error handling
 
 ## Contact & Support
 

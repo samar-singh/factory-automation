@@ -129,7 +129,9 @@ def setup_logging(
 
     # Configure root logger
     logging.basicConfig(
-        level=numeric_level, handlers=handlers, force=True  # Remove existing handlers
+        level=numeric_level,
+        handlers=handlers,
+        force=True,  # Remove existing handlers
     )
 
     # Set specific loggers to WARNING to reduce noise

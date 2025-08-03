@@ -12,15 +12,16 @@ app:
 
 # Orchestrator Settings
 orchestrator:
-  use_ai_version: false  # false=v1 (traditional), true=v2 (AI-powered)
-  enable_comparison_logging: false  # Enable A/B testing between v1 and v2
+  use_ai_version: true  # false=v1 (traditional), true=v2 (AI-powered)
+  version: v3  # v1=traditional, v2=AI-workflow, v3=full-agentic
+  enable_comparison_logging: false  # Enable A/B testing between versions
 
 # Email Configuration
 email:
   poll_interval: 300  # seconds (5 minutes)
   folder: INBOX
   max_results: 50  # Maximum emails to fetch per poll
-  
+
 # Gmail OAuth Settings (non-sensitive)
 gmail:
   redirect_uri: http://localhost:8080
@@ -59,10 +60,10 @@ models:
   # OpenAI models
   orchestrator_model: gpt-4o  # For v2 orchestrator
   agent_model: gpt-3.5-turbo  # For sub-agents
-  
+
   # Vision models
   vision_model: together_ai/Qwen/Qwen2.5-VL-72B-Instruct
-  
+
   # Embedding models
   text_embedding: all-MiniLM-L6-v2
   image_embedding: ViT-B/32  # CLIP model
@@ -101,13 +102,14 @@ monitoring:
   comparison_log_dir: ./orchestrator_comparison_logs
   log_retention_days: 30
   metrics_enabled: true
-  
+
 # Feature Flags
 features:
   payment_processing: false  # Not yet implemented
   ocr_enabled: false  # Not yet implemented
   auto_approval: false  # Require human approval
   email_templates: true
+  use_mock_gmail: true  # Use mock emails for testing
 
 # Business Rules
 business:
@@ -118,7 +120,7 @@ business:
   auto_followup_days: 7
   payment_reminder_days: 3
   order_expiry_days: 30
-  
+
 # UI Configuration
 ui:
   theme: default

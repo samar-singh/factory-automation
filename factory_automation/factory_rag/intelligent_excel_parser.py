@@ -39,7 +39,7 @@ class IntelligentExcelParser:
         sample_data = self._create_data_sample(df)
 
         prompt = f"""Analyze this Excel data structure and identify the schema.
-        
+
 File: {file_name}
 Columns: {df.columns.tolist()}
 Sample data (first 5 rows):
@@ -47,7 +47,7 @@ Sample data (first 5 rows):
 
 Identify and map columns to these standard fields:
 - product_code: Unique identifier/SKU/code
-- product_name: Name/description of the product  
+- product_name: Name/description of the product
 - stock_quantity: Available stock/quantity
 - price: Price/cost (if available)
 - brand: Brand name

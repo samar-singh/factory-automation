@@ -25,20 +25,26 @@
 ## 🚀 How to Run the System
 
 ### 1. Start the Live Dashboard
+
 ```bash
 python launch_live_dashboard.py
 ```
-Then open http://localhost:7860 in your browser
+
+Then open <http://localhost:7860> in your browser
 
 ### 2. Test Inventory Search
+
 Try queries like:
+
 - "VH cotton tags"
 - "Allen Solly size 32"
 - "FM linen blend"
 - "Myntra tags with thread"
 
 ### 3. Test Order Processing
+
 Paste an email order like:
+
 ```
 Dear Sir,
 
@@ -53,12 +59,14 @@ Please confirm availability.
 ## 📋 Immediate Next Steps
 
 ### Priority 1: Gmail Integration
+
 1. Set up domain-wide delegation for service account
 2. Add service account to Google Workspace admin
 3. Test with real customer emails
 4. Implement automatic email polling
 
 ### Priority 2: Complete Missing Features
+
 1. **Payment OCR**
    - Implement Tesseract for UTR extraction
    - Process cheque images
@@ -75,6 +83,7 @@ Please confirm availability.
    - Send notifications
 
 ### Priority 3: Production Deployment
+
 1. Fix remaining Excel ingestion issues (2 files failed)
 2. Deploy to cloud server (AWS/GCP/Azure)
 3. Set up monitoring and alerts

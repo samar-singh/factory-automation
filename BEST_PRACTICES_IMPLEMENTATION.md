@@ -30,30 +30,36 @@ factory_automation/
 ### 3. Configuration Files
 
 #### `.editorconfig`
+
 - Ensures consistent formatting across different editors
 - Defines indentation, line endings, and character encoding
 
 #### `.pre-commit-config.yaml`
+
 - Automated code quality checks before commits
 - Runs ruff, black, mypy, and security checks
 - Prevents committing of secrets and large files
 
 #### `pyproject.toml`
+
 - Centralized project configuration
 - Includes tool settings for ruff, black, mypy, isort, and bandit
 - Defines project dependencies and metadata
 
 #### `pytest.ini`
+
 - Test configuration with markers for different test types
 - Configured test paths and discovery patterns
 
 #### `Makefile`
+
 - Common commands for development workflow
 - Targets for linting, testing, formatting, and running the application
 
 ### 4. CI/CD Pipeline
 
 #### `.github/workflows/ci.yml`
+
 - Automated testing on push and pull requests
 - Runs linting, type checking, tests, and security scans
 - Includes PostgreSQL service for integration tests
@@ -62,6 +68,7 @@ factory_automation/
 ### 5. Structured Logging
 
 #### `factory_utils/logging_config.py`
+
 - Structured JSON logging support
 - Colored console output for development
 - Context-aware logging with extra fields
@@ -70,6 +77,7 @@ factory_automation/
 ## 🚀 Quick Start
 
 ### Initial Setup
+
 ```bash
 # Create virtual environment and install dependencies
 make install-dev
@@ -82,6 +90,7 @@ make all
 ```
 
 ### Development Workflow
+
 ```bash
 # Format code
 make format
@@ -98,6 +107,7 @@ make check
 ```
 
 ### Running the Application
+
 ```bash
 # Launch Gradio dashboard
 make run-gradio
@@ -123,6 +133,7 @@ When adding new code, ensure:
 ## 🔧 Tool Commands
 
 ### Pre-commit
+
 ```bash
 # Install hooks
 pre-commit install
@@ -135,6 +146,7 @@ pre-commit autoupdate
 ```
 
 ### Testing
+
 ```bash
 # Run specific test file
 pytest factory_automation/factory_tests/test_specific.py
@@ -147,6 +159,7 @@ pytest -vv
 ```
 
 ### Type Checking
+
 ```bash
 # Check specific module
 mypy factory_automation/factory_agents
@@ -158,12 +171,14 @@ mypy factory_automation/factory_agents
 ## 📊 Metrics and Standards
 
 ### Code Quality Goals
+
 - **Test Coverage**: Aim for >80% coverage
 - **Type Coverage**: All public APIs should be typed
 - **Linting**: Zero linting errors
 - **Security**: No high/critical vulnerabilities
 
 ### Performance Standards
+
 - **Response Time**: API endpoints < 200ms
 - **Memory Usage**: Monitor for memory leaks
 - **Startup Time**: Application ready < 10s

@@ -10,12 +10,14 @@ The Factory Automation System uses a two-file configuration approach:
 ## Quick Start
 
 1. **Copy the example files:**
+
    ```bash
    cp .env.example .env
    # config.yaml is already ready to use
    ```
 
 2. **Add your API keys to `.env`:**
+
    ```bash
    # Edit .env and add your keys
    OPENAI_API_KEY=sk-...
@@ -23,6 +25,7 @@ The Factory Automation System uses a two-file configuration approach:
    ```
 
 3. **Adjust configuration in `config.yaml`:**
+
    ```yaml
    # Example: Enable AI orchestrator
    orchestrator:
@@ -34,7 +37,7 @@ The Factory Automation System uses a two-file configuration approach:
 Settings are loaded in this order (highest to lowest priority):
 
 1. Environment variables
-2. `.env` file  
+2. `.env` file
 3. `config.yaml` file
 
 This means you can override any config.yaml setting with an environment variable.
@@ -42,6 +45,7 @@ This means you can override any config.yaml setting with an environment variable
 ## Common Configuration Changes
 
 ### Enable AI Orchestrator (v2)
+
 ```yaml
 # config.yaml
 orchestrator:
@@ -49,6 +53,7 @@ orchestrator:
 ```
 
 ### Enable A/B Testing
+
 ```yaml
 # config.yaml
 orchestrator:
@@ -56,6 +61,7 @@ orchestrator:
 ```
 
 ### Change Ports
+
 ```yaml
 # config.yaml
 app:
@@ -64,6 +70,7 @@ app:
 ```
 
 ### Adjust Email Polling
+
 ```yaml
 # config.yaml
 email:
@@ -72,6 +79,7 @@ email:
 ```
 
 ### Enable Features
+
 ```yaml
 # config.yaml
 features:
@@ -83,6 +91,7 @@ features:
 ## Accessing Configuration in Code
 
 ### Basic Usage
+
 ```python
 from config.settings import settings
 
@@ -97,6 +106,7 @@ features = settings.get_feature_flags()
 ```
 
 ### Model Configuration
+
 ```python
 models = settings.get_model_config()
 orchestrator_model = models.get('orchestrator_model', 'gpt-4o')
@@ -104,6 +114,7 @@ vision_model = models.get('vision_model')
 ```
 
 ### Business Rules
+
 ```python
 rules = settings.get_business_rules()
 working_hours = rules.get('working_hours')
@@ -123,20 +134,23 @@ export LOG_LEVEL=DEBUG
 
 ## Security Best Practices
 
-### DO Store in `.env`:
+### DO Store in `.env`
+
 - API keys (OpenAI, Together.ai, etc.)
 - Database passwords
 - OAuth client secrets
 - Any sensitive credentials
 
-### DO Store in `config.yaml`:
+### DO Store in `config.yaml`
+
 - Ports and hostnames
 - Feature flags
 - Business rules
 - Model names
 - Timeouts and intervals
 
-### NEVER:
+### NEVER
+
 - Commit `.env` to git
 - Put secrets in `config.yaml`
 - Share API keys in logs
@@ -144,6 +158,7 @@ export LOG_LEVEL=DEBUG
 ## Troubleshooting
 
 ### Settings not loading?
+
 ```python
 # Debug settings
 from config.settings import settings
@@ -151,7 +166,8 @@ print(settings.config)  # Shows loaded yaml
 print(settings.model_dump())  # Shows all settings
 ```
 
-### Check configuration:
+### Check configuration
+
 ```bash
 # Verify config.yaml is valid
 python -c "import yaml; yaml.safe_load(open('config.yaml'))"
@@ -160,11 +176,11 @@ python -c "import yaml; yaml.safe_load(open('config.yaml'))"
 python -c "from config.settings import settings; print('AI Orchestrator:', settings.use_ai_orchestrator)"
 ```
 
-### Common Issues:
+### Common Issues
 
 1. **Missing API key error**
    - Ensure `.env` has `OPENAI_API_KEY=sk-...`
-   
+
 2. **Config not updating**
    - Restart the application after changes
    - Check for typos in YAML
@@ -176,6 +192,7 @@ python -c "from config.settings import settings; print('AI Orchestrator:', setti
 ## Advanced Configuration
 
 ### Dynamic Reloading (Development)
+
 ```python
 # Reload settings without restart
 from importlib import reload
@@ -184,12 +201,14 @@ reload(config.settings)
 ```
 
 ### Custom Config Path
+
 ```python
 # Use different config file
 os.environ['CONFIG_PATH'] = '/path/to/custom-config.yaml'
 ```
 
 ### Validate Configuration
+
 ```python
 # Check all required settings
 from config.settings import settings

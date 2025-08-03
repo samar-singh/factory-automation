@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Main entry point for the Factory Automation System."""
+
 import asyncio
 from pathlib import Path
 from typing import Optional
@@ -29,17 +30,23 @@ setup_logging(
 logger = get_logger(__name__)
 
 # Dynamic orchestrator import based on settings
-if settings.use_ai_orchestrator:
+orchestrator_version = getattr(settings, "orchestrator_version", "v2")
+
+if orchestrator_version == "v3":
+    from factory_agents.orchestrator_v3_agentic import (
+        AgenticOrchestratorV3 as OrchestratorAgent,
+    )
+
+    logger.info("Using Agentic Orchestrator (v3) with autonomous tool usage")
+elif settings.use_ai_orchestrator:
     from factory_agents.orchestrator_v2_agent import (
         OrchestratorAgentV2 as OrchestratorAgent,
     )
+
+    logger.info("Using AI-powered orchestrator (v2) with function tools pattern")
 else:
     from factory_agents.orchestrator_agent import OrchestratorAgent
 
-# Log which orchestrator we're using after logger is configured
-if settings.use_ai_orchestrator:
-    logger.info("Using AI-powered orchestrator (v2) with function tools pattern")
-else:
     logger.info("Using traditional orchestrator (v1) with handoff pattern")
 
 # Create FastAPI app
@@ -87,8 +94,13 @@ async def startup_event():
     orchestrator = OrchestratorAgent(chromadb_client)
 
     # Start email monitoring in background
-    if settings.app_env == "production":
+    if settings.app_env == "production" and settings.gmail_delegated_email:
         asyncio.create_task(orchestrator.start_email_monitoring())
+        logger.info(f"Email monitoring started for {settings.gmail_delegated_email}")
+    else:
+        logger.info(
+            "Email monitoring disabled (not in production or no delegated email)"
+        )
 
     logger.info("System initialization complete!")
 

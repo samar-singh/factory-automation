@@ -3,16 +3,19 @@
 ## 1. Gmail API Setup
 
 ### Step 1: Create Google Cloud Project
+
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Click "Select a project" → "New Project"
 3. Name it "Factory-Automation" and create
 
 ### Step 2: Enable Gmail API
+
 1. In the project dashboard, go to "APIs & Services" → "Library"
 2. Search for "Gmail API"
 3. Click on it and press "Enable"
 
 ### Step 3: Create Service Account
+
 1. Go to "APIs & Services" → "Credentials"
 2. Click "Create Credentials" → "Service Account"
 3. Fill in:
@@ -24,6 +27,7 @@
 6. Click "Done"
 
 ### Step 4: Generate Key
+
 1. Click on the created service account
 2. Go to "Keys" tab
 3. Click "Add Key" → "Create new key"
@@ -31,6 +35,7 @@
 5. Save the downloaded file as `gmail_credentials.json` in your project
 
 ### Step 5: Enable Domain-Wide Delegation (if using G Suite)
+
 1. In service account details, click "Show Domain-Wide Delegation"
 2. Enable "Enable G Suite Domain-wide Delegation"
 3. Note the Client ID for admin console setup
@@ -44,6 +49,7 @@
 5. Name it "factory-automation"
 6. Copy the key immediately (you won't see it again)
 7. Add to `.env` file:
+
    ```
    OPENAI_API_KEY=sk-...
    ```
@@ -56,6 +62,7 @@
 4. Create new API key
 5. Copy the key
 6. Add to `.env` file:
+
    ```
    TOGETHER_API_KEY=...
    ```
@@ -99,7 +106,7 @@ load_dotenv()
 
 def verify_apis():
     print("Verifying API configurations...")
-    
+
     # Check OpenAI
     try:
         openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -107,7 +114,7 @@ def verify_apis():
         print("✅ OpenAI API: Connected")
     except Exception as e:
         print(f"❌ OpenAI API: {e}")
-    
+
     # Check Together.ai via LiteLLM
     try:
         litellm.api_key = os.getenv("TOGETHER_API_KEY")
@@ -120,7 +127,7 @@ def verify_apis():
         print("✅ Together.ai API: Connected")
     except Exception as e:
         print(f"❌ Together.ai API: {e}")
-    
+
     # Check Gmail
     try:
         credentials = service_account.Credentials.from_service_account_file(
@@ -140,6 +147,7 @@ if __name__ == "__main__":
 
 1. **Never commit credentials to git**
    - Add to `.gitignore`:
+
      ```
      .env
      gmail_credentials.json

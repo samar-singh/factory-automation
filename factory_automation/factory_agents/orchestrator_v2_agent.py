@@ -1,20 +1,21 @@
 """AI-powered orchestrator agent using OpenAI function tools pattern."""
 
+import asyncio
 import logging
 import time
 from typing import Any, Dict
 
 from agents import Agent, Runner
-from factory_agents.base import BaseAgent
-from factory_agents.email_monitor_agent import EmailMonitorAgent
-from factory_agents.inventory_matcher_agent import InventoryMatcherAgent
-from factory_agents.order_interpreter_agent import OrderInterpreterAgent
+from .base import BaseAgent
+from .email_monitor_agent import EmailMonitorAgent
+from .inventory_matcher_agent import InventoryMatcherAgent
+from .order_interpreter_agent import OrderInterpreterAgent
 
 # TODO: Implement these agents
 # from factory_agents.document_creator import DocumentCreatorAgent
 # from factory_agents.payment_tracker import PaymentTrackerAgent
 # from factory_agents.approval_manager import ApprovalManagerAgent
-from factory_rag.chromadb_client import ChromaDBClient
+from ..factory_rag.chromadb_client import ChromaDBClient
 
 # TODO: Implement database CRUD operations
 # from factory_database.crud import get_customer_history, get_thread_history
@@ -75,6 +76,7 @@ class OrchestratorAgentV2:
         """Initialize orchestrator with all sub-agents as tools."""
         self.chromadb_client = chromadb_client
         self.runner = Runner()
+        self.is_monitoring = False
 
         # Initialize sub-agents
         self.email_monitor = EmailMonitorAgent()
@@ -158,25 +160,32 @@ class OrchestratorAgentV2:
             }
 
             # Construct prompt for the orchestrator
+            # This prompt tells the AI to use its tools autonomously
             prompt = f"""
-            Process this email and take appropriate actions:
+            You have received a new email that needs to be processed. Use your available tools to:
+            
+            1. First, use email_monitor to analyze this email and determine its type
+            2. If it's an order, use order_interpreter to extract order details
+            3. Use inventory_matcher to find matching products in our inventory
+            4. Take appropriate actions based on the results
             
             Email Details:
-            - From: {email_data.get('sender')}
-            - Subject: {email_data.get('subject')}
-            - Body: {email_data.get('body')}
-            - Attachments: {len(email_data.get('attachments', []))} files
+            From: {email_data.get('from', email_data.get('sender', 'Unknown'))}
+            Subject: {email_data.get('subject', 'No subject')}
+            Body: {email_data.get('body', 'No body')}
+            Attachments: {len(email_data.get('attachments', []))} files
             
-            Thread Context:
-            - Previous messages in thread: {len(thread_history)}
-            - Customer order history: {len(customer_history)} previous orders
+            Previous thread messages: {len(thread_history)}
+            Customer history: {len(customer_history)} previous orders
             
-            Analyze the email intent and execute the appropriate workflow.
-            Provide a summary of actions taken and results.
+            Process this email completely and provide a summary of all actions taken.
             """
 
-            # Let the AI orchestrator handle the email
-            result = await self.runner.run(self.agent, prompt, context=context)
+            # Let the AI orchestrator handle the email with tools
+            # The agent will autonomously decide which tools to use
+            result = await self.runner.run(
+                self.agent, prompt, context={"email_data": email_data, **context}
+            )
 
             # Extract and return results
             processing_result = {
@@ -206,7 +215,7 @@ class OrchestratorAgentV2:
         estimated_cost = (estimated_tokens / 1000) * 0.03
 
         # Log for comparison if enabled
-        from factory_config.settings import settings
+        from ..factory_config.settings import settings
 
         if settings.enable_comparison_logging:
             from factory_utils.comparison_logger import comparison_logger
@@ -241,6 +250,35 @@ class OrchestratorAgentV2:
         except Exception as e:
             logger.error(f"Error handling request: {str(e)}")
             return {"success": False, "error": str(e)}
+
+    async def start_email_monitoring(self):
+        """Start continuous email monitoring."""
+        self.is_monitoring = True
+        logger.info("Starting AI-powered email monitoring...")
+
+        while self.is_monitoring:
+            try:
+                # Check for new emails
+                new_emails = await self.email_monitor.check_new_emails()
+
+                for email in new_emails:
+                    await self.process_email(email)
+
+                # Wait for next poll interval
+                await asyncio.sleep(300)  # 5 minutes
+
+            except Exception as e:
+                logger.error(f"Error in email monitoring: {str(e)}")
+                await asyncio.sleep(60)  # Wait 1 minute on error
+
+    async def stop(self):
+        """Stop the orchestrator."""
+        self.is_monitoring = False
+        logger.info("AI Orchestrator stopped")
+
+    def is_running(self) -> bool:
+        """Check if orchestrator is running."""
+        return self.is_monitoring
 
 
 # Placeholder classes for agents that don't exist yet

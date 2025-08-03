@@ -5,11 +5,11 @@ import logging
 import time
 from typing import Any, Dict
 
-from factory_agents.base import BaseAgent
-from factory_agents.email_monitor_agent import EmailMonitorAgent
-from factory_agents.inventory_matcher_agent import InventoryMatcherAgent
-from factory_agents.order_interpreter_agent import OrderInterpreterAgent
-from factory_rag.chromadb_client import ChromaDBClient
+from .base import BaseAgent
+from .email_monitor_agent import EmailMonitorAgent
+from .inventory_matcher_agent import InventoryMatcherAgent
+from .order_interpreter_agent import OrderInterpreterAgent
+from ..factory_database.vector_db import ChromaDBClient
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ class OrchestratorAgent(BaseAgent):
             - Email processing → Email Monitor Agent
             - Order interpretation → Order Interpreter Agent
             - Inventory matching → Inventory Matcher Agent
-            
+
             Maintain context across the workflow and ensure smooth handoffs.""",
             handoffs=[
                 self.email_monitor.agent,
@@ -112,10 +112,10 @@ class OrchestratorAgent(BaseAgent):
 
         # Log for comparison if enabled
         processing_time = time.time() - start_time
-        from factory_config.settings import settings
+        from ..factory_config.settings import settings
 
         if settings.enable_comparison_logging:
-            from factory_utils.comparison_logger import comparison_logger
+            from ..factory_utils.comparison_logger import comparison_logger
 
             comparison_logger.log_processing(
                 email_id=email_data.get("message_id", "unknown"),

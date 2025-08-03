@@ -166,8 +166,8 @@ def create_dashboard():
         gr.Markdown(
             """
         ---
-        **System Status**: 🟢 All systems operational | 
-        **Last Update**: Just now | 
+        **System Status**: 🟢 All systems operational |
+        **Last Update**: Just now |
         **Version**: 0.1.0
         """
         )

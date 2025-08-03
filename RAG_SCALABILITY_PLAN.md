@@ -20,6 +20,7 @@
 ## Proposed AI-Powered Solution
 
 ### 1. Intelligent Schema Detection
+
 ```python
 # Instead of:
 COLUMN_MAPPINGS = {
@@ -35,6 +36,7 @@ COLUMN_MAPPINGS = {
 ### 2. Self-Learning System
 
 **Learning Pipeline:**
+
 1. **Initial Analysis**: GPT-4 analyzes Excel structure
 2. **Pattern Recognition**: Cache successful mappings
 3. **Feedback Loop**: Track extraction quality
@@ -43,11 +45,13 @@ COLUMN_MAPPINGS = {
 ### 3. Implementation Approach
 
 #### Phase 1: Hybrid System
+
 - Keep existing parser as fallback
 - Use AI parser for new/unknown formats
 - Compare results for validation
 
 #### Phase 2: Full AI Integration
+
 ```python
 # Intelligent parsing example
 parser = IntelligentExcelParser(openai_api_key)

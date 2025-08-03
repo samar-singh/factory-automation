@@ -11,13 +11,13 @@ dependencies = [
     "gradio>=4.0.0",
     "psycopg2-binary>=2.9.0",
     "sqlalchemy>=2.0.0",
-    
+
     # Email processing
     "google-auth>=2.0.0",
     "google-auth-oauthlib>=1.0.0",
     "google-auth-httplib2>=0.1.0",
     "google-api-python-client>=2.0.0",
-    
+
     # ML/AI tools
     "sentence-transformers>=2.2.0",
     "torch>=2.0.0",
@@ -25,21 +25,21 @@ dependencies = [
     "Pillow>=10.0.0",
     "litellm>=1.0.0",
     # "clip-by-openai>=1.0.0",  # Commented due to torchvision conflict
-    
+
     # OCR
     "pytesseract>=0.3.10",
     "opencv-python>=4.8.0",
-    
+
     # Data processing
     "pandas>=2.0.0",
     "openpyxl>=3.1.0",
     "numpy>=1.24.0",
-    
+
     # API framework
     "fastapi>=0.100.0",
     "uvicorn>=0.23.0",
     "python-multipart>=0.0.6",
-    
+
     # Utils
     "python-dotenv>=1.0.0",
     "pydantic>=2.0.0",

@@ -307,7 +307,7 @@ def create_live_dashboard():
         gr.Markdown(
             """
             ---
-            **Factory Automation System** | Version 0.1.0 | 
+            **Factory Automation System** | Version 0.1.0 |
             [Documentation](https://github.com/samar-singh/factory-automation)
             """
         )

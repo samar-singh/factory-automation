@@ -7,6 +7,7 @@ This document outlines a comprehensive plan to automate your friend's garment pr
 ## System Overview
 
 ### Core Objectives
+
 1. **Automate Email Processing**: Poll Gmail for order requests and payment updates
 2. **Intelligent Order Understanding**: Use LLMs to interpret requests and extract key information
 3. **Smart Inventory Matching**: Leverage multimodal RAG for accurate tag matching
@@ -15,9 +16,10 @@ This document outlines a comprehensive plan to automate your friend's garment pr
 6. **Real-time Dashboard**: Provide visibility into order pipeline and system status
 
 ### Key Technologies
+
 - **OpenAI Agents SDK**: Production-ready framework for multi-agent orchestration
 - **ChromaDB**: Free, open-source vector database for RAG
-- **Multimodal Models**: 
+- **Multimodal Models**:
   - **CLIP + Sentence Transformers**: Free multimodal embeddings
   - **Qwen2.5VL72B**: Advanced vision-language model via Together.ai/LiteLLM
 - **Gradio**: Interactive web dashboard
@@ -50,6 +52,7 @@ This document outlines a comprehensive plan to automate your friend's garment pr
 #### Agent Descriptions
 
 **1. Orchestrator Agent (OpenAI-Powered)**
+
 - AI-driven central coordinator using GPT-4
 - Makes intelligent routing decisions based on email context
 - Maintains conversation history and session context
@@ -57,12 +60,14 @@ This document outlines a comprehensive plan to automate your friend's garment pr
 - Handles complex scenarios and edge cases intelligently
 
 **2. Email Monitor Agent**
+
 - Polls Gmail API every 5 minutes
 - Filters order-related emails
 - Extracts attachments and metadata
 - Classifies email intent (new order, payment, follow-up)
 
 **3. Order Interpreter Agent**
+
 - Processes email content with GPT-4
 - Analyzes tag images with dual approach:
   - Qwen2.5VL72B via Together.ai for detailed visual understanding
@@ -71,18 +76,21 @@ This document outlines a comprehensive plan to automate your friend's garment pr
 - Handles multiple attachment formats
 
 **4. Inventory Matcher Agent**
+
 - Searches ChromaDB for similar tags
 - Uses multimodal embeddings (text + image)
 - Calculates similarity scores
 - Returns ranked matches with confidence levels
 
 **5. Document Creator Agent**
+
 - Generates Pro-Forma Invoices
 - Composes professional email responses
 - Uses factory supervisor persona
 - Maintains consistent communication style
 
 **6. Payment Tracker Agent**
+
 - Monitors payment confirmations
 - Extracts UTR numbers from emails
 - Processes cheque images with OCR
@@ -117,62 +125,72 @@ This document outlines a comprehensive plan to automate your friend's garment pr
 #### A. New Order Processing Flow
 
 1. **Email Reception**
+
    ```
    Customer Email → Gmail API → Email Monitor Agent
    ```
 
 2. **Content Extraction**
+
    ```
    Email Monitor → Extract attachments → Order Interpreter Agent
    ```
 
 3. **Order Analysis**
+
    ```
-   Order Interpreter → Parse requirements → Extract tag image → 
-   Qwen2.5VL72B analysis (via Together.ai) → Generate CLIP embeddings → 
+   Order Interpreter → Parse requirements → Extract tag image →
+   Qwen2.5VL72B analysis (via Together.ai) → Generate CLIP embeddings →
    Search ChromaDB with combined understanding
    ```
 
 4. **Inventory Matching**
+
    ```
-   Inventory Matcher → Similarity search → Filter by stock → 
+   Inventory Matcher → Similarity search → Filter by stock →
    Rank results → Present to human
    ```
 
 5. **Human Approval**
+
    ```
-   Gradio Dashboard → Show matches → Get decision → 
+   Gradio Dashboard → Show matches → Get decision →
    Update inventory → Create PI
    ```
 
 6. **Response Generation**
+
    ```
-   Document Creator → Generate PI → Compose email → 
+   Document Creator → Generate PI → Compose email →
    Send response → Log in database
    ```
 
 #### B. Payment Processing Flow
 
 1. **Payment Email Detection**
+
    ```
    Email with "payment"/"UTR"/"cheque" → Payment Tracker Agent
    ```
 
 2. **Information Extraction**
+
    ```
    If UTR: Extract number from text
    If Cheque: OCR image → Extract details
    ```
 
 3. **Verification**
+
    ```
-   Match payment to order → Update status → 
+   Match payment to order → Update status →
    Notify dispatch team if complete
    ```
 
 4. **Follow-up Management**
+
    ```
-   Check payment age → If > 7 days → Send reminder → 
+   Check payment age → If > 7 days → Send reminder →
    Log follow-up → Escalate if needed
    ```
 
@@ -306,6 +324,7 @@ factory_automation/
 #### A. Function Tools Pattern Benefits
 
 **1. Context-Aware Processing**
+
 ```python
 # The orchestrator can handle complex scenarios intelligently
 Examples:
@@ -316,6 +335,7 @@ Examples:
 ```
 
 **2. Dynamic Workflow Adaptation**
+
 ```python
 # No hardcoded if-else chains - AI determines the flow
 # Can handle unexpected scenarios gracefully
@@ -324,6 +344,7 @@ Examples:
 ```
 
 **3. Natural Language Understanding**
+
 ```python
 # Understands context like:
 - Customer preferences from past orders
@@ -345,10 +366,10 @@ class MultimodalSearch:
         self.client = chroma_client
         self.text_encoder = SentenceTransformer('all-MiniLM-L6-v2')
         self.clip_model, self.preprocess = clip.load("ViT-B/32")
-        
+
         # Configure LiteLLM for Qwen2.5VL
         litellm.api_key = os.getenv("TOGETHER_API_KEY")
-        
+
     async def analyze_image_with_qwen(self, image_path, query):
         """Use Qwen2.5VL72B for detailed image analysis."""
         response = await litellm.acompletion(
@@ -369,49 +390,49 @@ class MultimodalSearch:
                 ]
             }]
         )
-        
+
         return response.choices[0].message.content
-        
+
     async def search(self, image=None, text=None, k=10):
         embeddings = []
         qwen_analysis = None
-        
+
         if text:
             text_emb = self.text_encoder.encode(text)
             embeddings.append(text_emb)
-            
+
         if image:
             # Get detailed analysis from Qwen2.5VL
             qwen_analysis = await self.analyze_image_with_qwen(
-                image, 
+                image,
                 "Extract tag details, size, material, and any text visible"
             )
-            
+
             # Generate CLIP embeddings for vector search
             image_emb = self.encode_image(image)
             embeddings.append(image_emb)
-            
+
             # Add Qwen analysis to text embedding if available
             if qwen_analysis:
                 analysis_emb = self.text_encoder.encode(qwen_analysis)
                 embeddings.append(analysis_emb)
-            
+
         # Combine all embeddings
         if len(embeddings) > 1:
             combined = np.concatenate(embeddings)
         else:
             combined = embeddings[0]
-            
+
         # Search ChromaDB
         results = self.client.query(
             query_embeddings=[combined.tolist()],
             n_results=k
         )
-        
+
         # Enhance results with Qwen analysis
         if qwen_analysis:
             results['qwen_analysis'] = qwen_analysis
-        
+
         return results
 ```
 
@@ -422,8 +443,8 @@ class MultimodalSearch:
 from agents import Agent, function_tool
 
 ORCHESTRATOR_INSTRUCTIONS = """
-You are the Factory Automation Orchestrator managing a garment price tag 
-manufacturing workflow. You analyze incoming emails and coordinate appropriate 
+You are the Factory Automation Orchestrator managing a garment price tag
+manufacturing workflow. You analyze incoming emails and coordinate appropriate
 actions based on context and conversation history.
 
 Your capabilities:
@@ -478,25 +499,25 @@ orchestrator_agent = Agent(
 # Example usage showing context-aware decision making
 async def process_email_with_context(email_data, conversation_history):
     """Process email with full context awareness."""
-    
+
     # Prepare context including conversation history
     context = {
         "current_email": email_data,
         "thread_history": conversation_history,
         "customer_context": get_customer_history(email_data["sender"])
     }
-    
+
     # Let the AI orchestrator decide the workflow
     result = await orchestrator_agent.run(
         f"""Process this email considering the full context:
-        
+
         Current Email: {email_data}
         Thread History: {conversation_history}
-        
+
         Analyze the intent and take appropriate actions.""",
         context=context
     )
-    
+
     return result
 ```
 
@@ -537,6 +558,7 @@ async def process_email_with_context(email_data, conversation_history):
 ### 8. Deployment Strategy
 
 #### Local Development
+
 ```bash
 # Clone repository
 git clone <repo-url>
@@ -562,6 +584,7 @@ python main.py
 ```
 
 #### Production Deployment
+
 ```yaml
 # docker-compose.prod.yml
 version: '3.8'
@@ -579,7 +602,7 @@ services:
       - redis
     ports:
       - "80:7860"
-      
+
   nginx:
     image: nginx:alpine
     volumes:
@@ -625,24 +648,28 @@ services:
 ## Implementation Timeline
 
 ### Phase 1: Foundation (Weeks 1-2)
+
 - Set up development environment with OpenAI Agents SDK
 - Configure ChromaDB and PostgreSQL
 - Implement orchestrator agent with function tools pattern
 - Create Gmail integration
 
 ### Phase 2: Core Features (Weeks 3-4)
+
 - Build individual agents as function tools
 - Implement multimodal RAG search
 - Create inventory matching logic
 - Develop OCR capabilities
 
 ### Phase 3: Agent Integration (Weeks 5-6)
+
 - Integrate all agents as tools for orchestrator
 - Implement context management and conversation history
 - Build document generation
 - Add payment tracking with intelligent routing
 
 ### Phase 4: UI & Testing (Weeks 7-8)
+
 - Complete Gradio dashboard
 - Test context-aware decision making
 - Performance optimization
@@ -651,11 +678,13 @@ services:
 ## Budget Estimation
 
 ### One-time Costs
+
 - Development: 8 weeks
 - Server setup: $0 (using existing infrastructure)
 - Software licenses: $0 (all open source)
 
 ### Recurring Costs (Monthly)
+
 - OpenAI API: ~$50-100 (depending on volume)
 - Together.ai API (Qwen2.5VL72B): ~$20-40 (for vision analysis)
 - Server hosting: ~$50 (if cloud deployed)
