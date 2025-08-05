@@ -151,7 +151,42 @@ Building an automated system for a garment price tag manufacturing factory to:
 - `/test_system.py` - Comprehensive system test
 - `/factory_automation/factory_tests/` - Test suite
 
-## Recent Updates (2025-08-03)
+## Recent Updates (2025-08-03 - Session 2)
+
+### Major Enhancements
+
+1. **AI-Powered Order Extraction**: Replaced basic regex with GPT-4 for intelligent order parsing
+   - Handles complex formats like fit mappings (Bootcut → TBALWBL0009N)
+   - Extracts customer info, quantities, specifications automatically
+   - Falls back to pattern matching if AI fails
+
+2. **Image Processing with Qwen2.5VL**: 
+   - Analyzes tag images using Together.ai API
+   - Stores base64 encoded images in ChromaDB
+   - Creates searchable visual inventory
+
+3. **Complete Order Processing Workflow**:
+   - New `process_complete_order` tool handles entire pipeline
+   - Confidence-based routing: >80% auto, 60-80% human review, <60% clarification
+   - Integrated ChromaDB search and inventory updates
+
+4. **Inventory Reconciliation System**:
+   - Excel files as source of truth (employee-maintained)
+   - PostgreSQL for real-time transactions
+   - ChromaDB as rebuildable search cache
+   - Automatic sync with configurable thresholds
+
+5. **Tool Consolidation**:
+   - Removed redundant tools (analyze_email, extract_order_items, make_decision)
+   - Streamlined to 8 essential tools
+   - Clearer AI decision making with less confusion
+
+6. **UI Improvements**:
+   - Automatic email extraction from pasted content
+   - No manual customer email input needed
+   - Enhanced placeholder text with examples
+
+## Recent Updates (2025-08-03 - Session 1)
 
 - ✅ Implemented agentic orchestrator with OpenAI Agents SDK
 - ✅ Fixed schema validation issues (Dict[str, Any] → str returns)
@@ -188,9 +223,12 @@ make format    # Format code
 make check     # Run linters
 make test      # Run tests
 
-# Run Application
+# Run Application (ALWAYS TEST WITH THIS AFTER CHANGES)
+python3 -m dotenv run -- python3 run_factory_automation.py
+
+# Alternative UIs
 python -m factory_automation.factory_ui.gradio_app_live  # Basic UI
-python launch_ai_app.py  # AI-Enhanced UI (recommended)
+python launch_ai_app.py  # AI-Enhanced UI
 
 # Database
 psql -U postgres -d factory_automation
@@ -199,6 +237,27 @@ psql -U postgres -d factory_automation
 git status
 git commit -m "feat: description"
 ```
+
+## CRITICAL DEVELOPMENT RULE ⚠️
+
+**ALWAYS test any code changes with `run_factory_automation.py` to ensure integration works:**
+
+```bash
+# After ANY modification to the codebase:
+1. Save your changes
+2. Run: source .venv/bin/activate
+3. Run: python3 -m dotenv run -- python3 run_factory_automation.py
+4. Verify no import errors or initialization failures
+5. Check that the web interface loads at http://localhost:7860
+
+# If errors occur:
+- Check imports match actual file/class names
+- Verify all dependencies are installed with uv
+- Ensure ChromaDB and PostgreSQL are accessible
+- Kill existing processes on port 7860 if needed: lsof -i :7860 | grep LISTEN | awk '{print $2}' | xargs kill -9
+```
+
+This ensures the integrated system always works as a whole, not just individual components.
 
 ## AI Integration Update (2025-08-03)
 
