@@ -119,10 +119,10 @@ Use your tools step by step.""",
 
         tools.append(analyze_email)
 
-        # Extract order items
+        # Extract order items - AI-powered
         @function_tool
         def extract_order_items(email_body: str) -> str:
-            """Extract order details from email"""
+            """Extract order details from email using AI"""
             # Track this call
             self.current_trace_tools.append(
                 {
@@ -132,25 +132,106 @@ Use your tools step by step.""",
                 }
             )
 
+            from openai import OpenAI
             import re
-
-            body_lower = email_body.lower()
-
-            # Extract quantities
-            quantities = re.findall(r"(\d+)\s*(?:pcs|pieces|tags|units)?", body_lower)
-
-            # Extract colors
-            colors = []
-            for color in ["black", "red", "blue", "green", "white", "silver"]:
-                if color in body_lower:
-                    colors.append(color)
-
-            # Extract item types
-            items = []
-            if "tag" in body_lower:
-                items.append("tags")
-            if "label" in body_lower:
-                items.append("labels")
+            import json
+            
+            # Initialize OpenAI client synchronously
+            client = OpenAI(api_key=settings.openai_api_key)
+            
+            # Prepare the prompt for GPT-4
+            extraction_prompt = f"""
+            You are an expert at extracting order information from emails for a garment price tag manufacturing factory.
+            
+            Analyze the following email and extract ALL order items with their specifications.
+            
+            Email Content:
+            {email_body}
+            
+            Extract the following information for EACH item ordered:
+            1. Item type (e.g., price tags, hang tags, care labels, barcode stickers, etc.)
+            2. Quantity (number of pieces/units)
+            3. Brand/Customer name
+            4. Color specifications if mentioned
+            5. Size specifications (dimensions if provided)
+            6. Material type if mentioned (paper, plastic, fabric, etc.)
+            7. Special requirements (printing, embossing, special finishes)
+            8. Any product codes or SKUs mentioned
+            9. Delivery timeline if mentioned
+            
+            Return as JSON with this structure:
+            {{
+                "customer_name": "extracted customer/brand name",
+                "order_items": [
+                    {{
+                        "item_type": "type of tag/label",
+                        "quantity": number,
+                        "brand": "brand name if different from customer",
+                        "color": "color if specified",
+                        "size": "dimensions if specified",
+                        "material": "material type",
+                        "special_requirements": ["list of special requirements"],
+                        "product_code": "code if mentioned",
+                        "description": "full description combining all details"
+                    }}
+                ],
+                "delivery_timeline": "urgency or deadline if mentioned",
+                "confidence_level": "high/medium/low based on clarity of requirements"
+            }}
+            """
+            
+            try:
+                # Call GPT-4 for intelligent extraction
+                response = client.chat.completions.create(
+                    model="gpt-4-turbo-preview",
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are an expert at extracting structured order information from unstructured text. Always return valid JSON."
+                        },
+                        {
+                            "role": "user",
+                            "content": extraction_prompt
+                        }
+                    ],
+                    response_format={"type": "json_object"},
+                    temperature=0.1,
+                    max_tokens=2000
+                )
+                
+                # Parse the AI response
+                extracted_data = json.loads(response.choices[0].message.content)
+                
+                # Add metadata
+                extracted_data["extraction_method"] = "ai_gpt4"
+                extracted_data["extraction_timestamp"] = datetime.now().isoformat()
+                
+                # Log successful extraction
+                logger.info(f"AI extracted {len(extracted_data.get('order_items', []))} items from email")
+                
+                result = json.dumps(extracted_data, indent=2)
+                
+            except Exception as e:
+                logger.error(f"AI extraction failed: {str(e)}, falling back to basic extraction")
+                
+                # Fallback to basic pattern matching
+                body_lower = email_body.lower()
+                
+                # Extract quantities
+                quantities = re.findall(r"(\d+)\s*(?:pcs|pieces|tags|units)?", body_lower)
+                
+                # Extract colors
+                colors = []
+                for color in ["black", "red", "blue", "green", "white", "silver"]:
+                    if color in body_lower:
+                        colors.append(color)
+                
+                # Extract item types
+                items = []
+                if "tag" in body_lower:
+                    items.append("tags")
+                if "label" in body_lower:
+                    items.append("labels")
 
             if quantities and (colors or items):
                 qty = quantities[0]

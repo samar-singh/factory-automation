@@ -11,14 +11,14 @@ Building an automated system for a garment price tag manufacturing factory to:
 - Track payments (UTR/cheques)
 - Provide real-time dashboard
 
-## Current Status (Last Updated: 2025-08-03)
+## Current Status (Last Updated: 2025-08-05)
 
 ### GitHub Repository
 
 - **URL**: <https://github.com/samar-singh/factory-automation>
 - **Status**: Active development, regular commits
 - **Branch**: main
-- **Progress**: ~80% Complete
+- **Progress**: ~90% Complete
 
 ### Completed Features ✅
 
@@ -123,11 +123,16 @@ Building an automated system for a garment price tag manufacturing factory to:
 
 ## Important Files & Directories
 
+### Project Structure 📁
+- **Documentation**: All docs now in `/docs/` folder (except README.md and CLAUDE.md)
+- **Testing**: All tests in `/factory_automation/factory_tests/`
+- **Deprecated**: Old tests moved to `/deprecated_tests/` for reference
+
 ### Configuration
 - `/config.yaml` - Application settings
 - `/.env.example` - Secret keys template
-- `/API_SETUP_GUIDE.md` - API configuration guide
-- `/CONFIGURATION_GUIDE.md` - Settings documentation
+- `/docs/API_SETUP_GUIDE.md` - API configuration guide
+- `/docs/CONFIGURATION_GUIDE.md` - Settings documentation
 
 ### Core Implementation
 - `/factory_automation/` - Main application directory
@@ -135,12 +140,17 @@ Building an automated system for a garment price tag manufacturing factory to:
 - `/factory_automation/factory_rag/` - RAG and search components
 - `/factory_automation/factory_ui/gradio_app_live.py` - Live dashboard
 - `/factory_automation/factory_database/` - Database models and connections
+- `/factory_automation/factory_models/` - Pydantic models for orders
 
-### Documentation
-- `/factory_automation_plan.md` - Implementation roadmap
-- `/ROADMAP_PROGRESS_REPORT.md` - Progress tracking
-- `/MIGRATION_GUIDE.md` - Deployment guide
-- `/RAG_SCALABILITY_PLAN.md` - Future scaling plans
+### Documentation (in /docs/)
+- `/docs/factory_automation_plan.md` - Implementation roadmap
+- `/docs/ROADMAP_PROGRESS_REPORT.md` - Progress tracking
+- `/docs/MIGRATION_GUIDE.md` - Deployment guide
+- `/docs/RAG_SCALABILITY_PLAN.md` - Future scaling plans
+- `/docs/SESSION_2_STATUS_UPDATE.md` - Latest session updates
+- `/docs/HOW_TO_RUN.md` - Execution instructions
+- `/docs/HUMAN_INTERACTION_GUIDE.md` - Human-in-loop documentation
+- `/docs/INVENTORY_SYNC_STRATEGY.md` - Excel/DB reconciliation
 
 ### Data & Storage
 - `/inventory/` - Excel inventory files
@@ -148,8 +158,13 @@ Building an automated system for a garment price tag manufacturing factory to:
 - `/sample_images/` - Auto-generated tag images
 
 ### Testing
-- `/test_system.py` - Comprehensive system test
-- `/factory_automation/factory_tests/` - Test suite
+- `/factory_automation/factory_tests/` - ALL test files go here
+- Key test files:
+  - `test_complete_workflow.py` - End-to-end workflow test
+  - `test_human_interaction.py` - Human review system test
+  - `test_integration.py` - Integration testing
+  - `test_ai_extraction.py` - AI extraction testing
+  - `test_cleanup.py` - Tool consolidation verification
 
 ## Recent Updates (2025-08-03 - Session 2)
 
@@ -238,8 +253,9 @@ git status
 git commit -m "feat: description"
 ```
 
-## CRITICAL DEVELOPMENT RULE ⚠️
+## CRITICAL DEVELOPMENT RULES ⚠️
 
+### 1. Integration Testing Rule
 **ALWAYS test any code changes with `run_factory_automation.py` to ensure integration works:**
 
 ```bash
@@ -258,6 +274,37 @@ git commit -m "feat: description"
 ```
 
 This ensures the integrated system always works as a whole, not just individual components.
+
+### 2. Test File Location Rule
+**ALL test files MUST be created in `/factory_automation/factory_tests/`:**
+
+```bash
+# CORRECT - Create tests here:
+factory_automation/factory_tests/test_new_feature.py
+
+# WRONG - Never create tests in root:
+test_something.py  # ❌ Don't do this
+
+# When creating a new test:
+1. Navigate to factory_automation/factory_tests/
+2. Create test file with descriptive name
+3. Import from factory_automation modules using absolute imports
+4. Follow existing test patterns for consistency
+```
+
+### 3. Documentation Organization Rule
+**All documentation goes in `/docs/` folder except README.md and CLAUDE.md:**
+
+```bash
+# These stay in root:
+- README.md         # Project overview
+- CLAUDE.md         # This memory file
+
+# Everything else goes in docs/:
+- docs/guides/      # How-to guides
+- docs/api/         # API documentation
+- docs/reports/     # Progress reports
+```
 
 ## AI Integration Update (2025-08-03)
 
