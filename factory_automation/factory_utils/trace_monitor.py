@@ -2,9 +2,9 @@
 
 import json
 import logging
+from collections import defaultdict
 from datetime import datetime
 from typing import Any, Dict
-from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 

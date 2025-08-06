@@ -1,14 +1,16 @@
 """Pydantic models for order data extraction and processing"""
 
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Literal
-from enum import Enum
-from pydantic import BaseModel, Field, validator
 from decimal import Decimal
+from enum import Enum
+from typing import Any, Dict, List, Literal, Optional
+
+from pydantic import BaseModel, Field, validator
 
 
 class OrderPriority(str, Enum):
     """Order priority levels"""
+
     URGENT = "urgent"
     HIGH = "high"
     MEDIUM = "medium"
@@ -18,6 +20,7 @@ class OrderPriority(str, Enum):
 
 class TagType(str, Enum):
     """Types of tags/labels"""
+
     PRICE_TAG = "price_tag"
     HANG_TAG = "hang_tag"
     CARE_LABEL = "care_label"
@@ -34,6 +37,7 @@ class TagType(str, Enum):
 
 class Material(str, Enum):
     """Material types for tags"""
+
     PAPER = "paper"
     CARDBOARD = "cardboard"
     PLASTIC = "plastic"
@@ -46,6 +50,7 @@ class Material(str, Enum):
 
 class AttachmentType(str, Enum):
     """Types of attachments"""
+
     EXCEL = "excel"
     IMAGE = "image"
     PDF = "pdf"
@@ -56,6 +61,7 @@ class AttachmentType(str, Enum):
 
 class Attachment(BaseModel):
     """Model for email attachments"""
+
     filename: str
     type: AttachmentType
     size_bytes: Optional[int] = None
@@ -67,6 +73,7 @@ class Attachment(BaseModel):
 
 class SpecialRequirement(BaseModel):
     """Special requirements for tags"""
+
     requirement_type: str  # e.g., "embossing", "foiling", "special_finish"
     description: str
     additional_cost: Optional[Decimal] = None
@@ -74,6 +81,7 @@ class SpecialRequirement(BaseModel):
 
 class TagSpecification(BaseModel):
     """Detailed tag specifications"""
+
     tag_code: str  # e.g., "TBALWBL0009N"
     tag_type: TagType
     quantity: int
@@ -84,16 +92,17 @@ class TagSpecification(BaseModel):
     special_requirements: List[SpecialRequirement] = []
     unit_price: Optional[Decimal] = None
     remarks: Optional[str] = None
-    
-    @validator('quantity')
+
+    @validator("quantity")
     def quantity_must_be_positive(cls, v):
         if v <= 0:
-            raise ValueError('Quantity must be positive')
+            raise ValueError("Quantity must be positive")
         return v
 
 
 class FitTagMapping(BaseModel):
     """Mapping between fit types and tag codes (specific to garment industry)"""
+
     fit_type: str  # e.g., "Bootcut", "Skinny", "Slim"
     fit_tag_codes: List[str]  # e.g., ["TBALWBL0009N", "TBALWBL0010N"]
     main_tag_code: str  # e.g., "TBALHGT0033N"
@@ -102,6 +111,7 @@ class FitTagMapping(BaseModel):
 
 class CustomerInfo(BaseModel):
     """Customer/Sender information"""
+
     company_name: str
     contact_person: Optional[str] = None
     email: str
@@ -112,6 +122,7 @@ class CustomerInfo(BaseModel):
 
 class DeliveryInfo(BaseModel):
     """Delivery requirements"""
+
     required_date: Optional[datetime] = None
     urgency: OrderPriority = OrderPriority.NORMAL
     delivery_address: Optional[str] = None
@@ -120,6 +131,7 @@ class DeliveryInfo(BaseModel):
 
 class ProformaInvoice(BaseModel):
     """Proforma invoice details"""
+
     invoice_number: str
     invoice_date: Optional[datetime] = None
     total_amount: Optional[Decimal] = None
@@ -129,6 +141,7 @@ class ProformaInvoice(BaseModel):
 
 class OrderItem(BaseModel):
     """Individual order item with all details"""
+
     item_id: str  # Unique identifier for the item
     tag_specification: TagSpecification
     brand: str  # e.g., "Allen Solly"
@@ -138,35 +151,40 @@ class OrderItem(BaseModel):
     quantity_confirmed: Optional[int] = None
     inventory_match_score: Optional[float] = None  # ChromaDB match score
     matched_inventory_items: List[Dict[str, Any]] = []  # ChromaDB results
-    approval_status: Literal["pending", "approved", "rejected", "review_required"] = "pending"
+    approval_status: Literal["pending", "approved", "rejected", "review_required"] = (
+        "pending"
+    )
     approval_notes: Optional[str] = None
 
 
 class ExtractedOrder(BaseModel):
     """Complete extracted order data"""
+
     # Order identification
-    order_id: str = Field(default_factory=lambda: f"ORD-{datetime.now().strftime('%Y%m%d%H%M%S')}")
+    order_id: str = Field(
+        default_factory=lambda: f"ORD-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    )
     email_subject: str
     email_date: datetime
-    
+
     # Customer information
     customer: CustomerInfo
-    
+
     # Order details
     items: List[OrderItem]
     total_items: int = 0
     total_quantity: int = 0
-    
+
     # Invoice details
     proforma_invoice: Optional[ProformaInvoice] = None
     purchase_order_number: Optional[str] = None
-    
+
     # Delivery information
     delivery: DeliveryInfo
-    
+
     # Attachments
     attachments: List[Attachment] = []
-    
+
     # Processing metadata
     extraction_confidence: float = Field(ge=0, le=1)  # 0 to 1
     extraction_method: str  # e.g., "ai_gpt4", "manual", "hybrid"
@@ -174,30 +192,32 @@ class ExtractedOrder(BaseModel):
     missing_information: List[str] = []
     requires_clarification: bool = False
     clarification_points: List[str] = []
-    
+
     # Approval workflow
-    approval_status: Literal["auto_approved", "pending_review", "manual_review", "rejected"] = "pending_review"
+    approval_status: Literal[
+        "auto_approved", "pending_review", "manual_review", "rejected"
+    ] = "pending_review"
     reviewed_by: Optional[str] = None
     reviewed_at: Optional[datetime] = None
     review_notes: Optional[str] = None
-    
-    @validator('total_items', always=True)
+
+    @validator("total_items", always=True)
     def calculate_total_items(cls, v, values):
-        if 'items' in values:
-            return len(values['items'])
+        if "items" in values:
+            return len(values["items"])
         return v
-    
-    @validator('total_quantity', always=True)
+
+    @validator("total_quantity", always=True)
     def calculate_total_quantity(cls, v, values):
-        if 'items' in values:
-            return sum(item.quantity_ordered for item in values['items'])
+        if "items" in values:
+            return sum(item.quantity_ordered for item in values["items"])
         return v
-    
-    @validator('approval_status', always=True)
+
+    @validator("approval_status", always=True)
     def determine_approval_status(cls, v, values):
         """Determine approval status based on confidence threshold"""
-        if 'extraction_confidence' in values:
-            confidence = values['extraction_confidence']
+        if "extraction_confidence" in values:
+            confidence = values["extraction_confidence"]
             if confidence >= 0.8:
                 return "auto_approved"
             elif confidence >= 0.6:
@@ -209,6 +229,7 @@ class ExtractedOrder(BaseModel):
 
 class InventoryUpdate(BaseModel):
     """Model for inventory updates after order approval"""
+
     order_id: str
     item_id: str
     tag_code: str
@@ -223,6 +244,7 @@ class InventoryUpdate(BaseModel):
 
 class OrderProcessingResult(BaseModel):
     """Result of order processing"""
+
     order: ExtractedOrder
     inventory_matches: List[Dict[str, Any]]  # ChromaDB search results
     confidence_scores: Dict[str, float]  # Item-wise confidence scores
@@ -235,6 +257,7 @@ class OrderProcessingResult(BaseModel):
 
 class HumanReviewRequest(BaseModel):
     """Request for human review"""
+
     order_id: str
     order: ExtractedOrder
     review_reason: str
@@ -248,6 +271,7 @@ class HumanReviewRequest(BaseModel):
 
 class HumanReviewResponse(BaseModel):
     """Human reviewer's response"""
+
     order_id: str
     reviewer_name: str
     decision: Literal["approved", "rejected", "request_clarification"]
@@ -262,6 +286,7 @@ class HumanReviewResponse(BaseModel):
 
 class OrderConfirmation(BaseModel):
     """Final order confirmation after approval"""
+
     order_id: str
     confirmation_number: str
     customer: CustomerInfo

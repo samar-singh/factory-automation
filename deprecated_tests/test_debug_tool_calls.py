@@ -4,6 +4,7 @@
 import asyncio
 import sys
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -12,13 +13,14 @@ load_dotenv()
 # Add project root to path
 sys.path.append(str(Path(__file__).parent))
 
+import logging
+
 from agents import Agent, Runner, function_tool
-from factory_automation.factory_database.vector_db import ChromaDBClient
+
 from factory_automation.factory_agents.orchestrator_v3_agentic import (
     AgenticOrchestratorV3,
 )
-
-import logging
+from factory_automation.factory_database.vector_db import ChromaDBClient
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 

@@ -5,6 +5,7 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -13,15 +14,15 @@ load_dotenv()
 # Add project root to path
 sys.path.append(str(Path(__file__).parent))
 
+import logging
+
+from factory_automation.factory_agents.mock_gmail_agent import MockGmailAgent
 from factory_automation.factory_agents.orchestrator_v3_agentic import (
     AgenticOrchestratorV3,
 )
 from factory_automation.factory_database.vector_db import ChromaDBClient
-from factory_automation.factory_agents.mock_gmail_agent import MockGmailAgent
-from factory_automation.factory_utils.trace_monitor import trace_monitor
 from factory_automation.factory_ui.trace_dashboard import create_trace_dashboard
-
-import logging
+from factory_automation.factory_utils.trace_monitor import trace_monitor
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"

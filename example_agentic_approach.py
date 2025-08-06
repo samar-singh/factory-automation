@@ -4,7 +4,8 @@ TRUE AGENTIC APPROACH
 This is how a proper autonomous agent system would work
 """
 
-from typing import Dict, Any, List
+from typing import Any, Dict, List
+
 from agents import Agent, Runner
 from agents.tools import function_tool
 

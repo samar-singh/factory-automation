@@ -11,8 +11,8 @@ sys.path.append(str(Path(__file__).parent))
 
 from factory_automation.factory_agents.email_monitor_agent import EmailMonitorAgent
 from factory_automation.factory_agents.orchestrator_v2_agent import OrchestratorAgentV2
-from factory_automation.factory_database.vector_db import ChromaDBClient
 from factory_automation.factory_config.settings import settings
+from factory_automation.factory_database.vector_db import ChromaDBClient
 
 # Setup logging
 logging.basicConfig(

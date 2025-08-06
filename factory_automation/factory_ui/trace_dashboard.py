@@ -1,7 +1,8 @@
 """Trace Dashboard for monitoring agent actions in Gradio"""
 
-import gradio as gr
 from typing import List
+
+import gradio as gr
 
 from ..factory_utils.trace_monitor import trace_monitor
 

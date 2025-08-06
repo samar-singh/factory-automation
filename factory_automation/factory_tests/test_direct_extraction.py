@@ -3,15 +3,18 @@
 
 import asyncio
 import json
+
 from openai import AsyncOpenAI
+
 from factory_automation.factory_config.settings import settings
+
 
 async def extract_order_with_ai(email_body: str):
     """Extract order items using OpenAI GPT-4"""
-    
+
     # Initialize OpenAI client
     client = AsyncOpenAI(api_key=settings.openai_api_key)
-    
+
     # Prepare the prompt
     extraction_prompt = f"""
     You are an expert at extracting order information from emails for a garment price tag manufacturing factory.
@@ -54,7 +57,7 @@ async def extract_order_with_ai(email_body: str):
         "missing_information": ["list of important missing details"]
     }}
     """
-    
+
     try:
         # Call GPT-4
         response = await client.chat.completions.create(
@@ -62,26 +65,24 @@ async def extract_order_with_ai(email_body: str):
             messages=[
                 {
                     "role": "system",
-                    "content": "You are an expert at extracting structured order information from unstructured text. Always return valid JSON."
+                    "content": "You are an expert at extracting structured order information from unstructured text. Always return valid JSON.",
                 },
-                {
-                    "role": "user",
-                    "content": extraction_prompt
-                }
+                {"role": "user", "content": extraction_prompt},
             ],
             response_format={"type": "json_object"},
             temperature=0.1,
-            max_tokens=2000
+            max_tokens=2000,
         )
-        
+
         return json.loads(response.choices[0].message.content)
-        
+
     except Exception as e:
         return {"error": str(e), "extraction_method": "failed"}
 
+
 async def main():
     """Test the extraction with sample emails"""
-    
+
     test_emails = [
         {
             "name": "Myntra Urgent Order",
@@ -104,7 +105,7 @@ async def main():
             
             Thanks,
             Myntra Procurement Team
-            """
+            """,
         },
         {
             "name": "Allen Solly Labels",
@@ -121,63 +122,64 @@ async def main():
             
             Regards,
             Allen Solly
-            """
+            """,
         },
         {
             "name": "Quick Requirement",
             "body": """
             Need 500 tags urgently. Black color preferred.
             Send quotation ASAP.
-            """
-        }
+            """,
+        },
     ]
-    
+
     print("=" * 70)
     print("AI-POWERED ORDER EXTRACTION TEST")
     print("=" * 70)
-    
+
     for email in test_emails:
         print(f"\n📧 Testing: {email['name']}")
         print("-" * 60)
-        
-        result = await extract_order_with_ai(email['body'])
-        
-        if 'error' in result:
+
+        result = await extract_order_with_ai(email["body"])
+
+        if "error" in result:
             print(f"❌ Error: {result['error']}")
             continue
-        
+
         print(f"✅ Customer: {result.get('customer_name', 'Not identified')}")
         print(f"📊 Confidence: {result.get('confidence_level', 'Unknown')}")
-        
-        items = result.get('order_items', [])
+
+        items = result.get("order_items", [])
         if items:
             print(f"\n📦 Extracted {len(items)} items:")
             for i, item in enumerate(items, 1):
                 print(f"\n  Item {i}:")
                 print(f"    • Type: {item.get('item_type', 'Unknown')}")
                 print(f"    • Quantity: {item.get('quantity', 'Unknown')}")
-                if item.get('color'):
+                if item.get("color"):
                     print(f"    • Color: {item['color']}")
-                if item.get('size'):
+                if item.get("size"):
                     print(f"    • Size: {item['size']}")
-                if item.get('material'):
+                if item.get("material"):
                     print(f"    • Material: {item['material']}")
-                if item.get('special_requirements'):
+                if item.get("special_requirements"):
                     print(f"    • Special: {', '.join(item['special_requirements'])}")
-                if item.get('product_code'):
+                if item.get("product_code"):
                     print(f"    • Code: {item['product_code']}")
         else:
             print("  ⚠️ No items extracted")
-        
-        if result.get('delivery_timeline'):
+
+        if result.get("delivery_timeline"):
             print(f"\n⏰ Delivery: {result['delivery_timeline']}")
-        
-        if result.get('missing_information'):
+
+        if result.get("missing_information"):
             print(f"\n❓ Missing: {', '.join(result['missing_information'])}")
-    
+
     print("\n" + "=" * 70)
     print("TEST COMPLETE")
     print("=" * 70)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

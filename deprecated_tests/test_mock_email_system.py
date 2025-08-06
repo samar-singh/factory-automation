@@ -9,8 +9,8 @@ from pathlib import Path
 # Add project root to path
 sys.path.append(str(Path(__file__).parent))
 
-from factory_automation.factory_agents.mock_gmail_agent import MockGmailAgent
 from factory_automation.factory_agents.email_monitor_agent import EmailMonitorAgent
+from factory_automation.factory_agents.mock_gmail_agent import MockGmailAgent
 from factory_automation.factory_agents.orchestrator_v2_agent import OrchestratorAgentV2
 from factory_automation.factory_database.vector_db import ChromaDBClient
 

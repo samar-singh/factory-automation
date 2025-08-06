@@ -10,7 +10,9 @@ sys.path.append(str(Path(__file__).parent))
 
 import logging
 
-from factory_automation.factory_agents.inventory_rag_agent import InventoryRAGAgent
+from factory_automation.factory_agents.inventory_rag_agent import (
+    InventoryRAGAgentV2 as InventoryRAGAgent,
+)
 from factory_automation.factory_database.vector_db import ChromaDBClient
 from factory_automation.factory_rag.excel_ingestion import ExcelInventoryIngestion
 

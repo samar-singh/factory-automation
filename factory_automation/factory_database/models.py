@@ -136,3 +136,43 @@ class InventorySnapshot(Base):
     tag_code = Column(String(50))
     snapshot_data = Column(JSON)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ReviewDecision(Base):
+    __tablename__ = "review_decisions"
+
+    id = Column(Integer, primary_key=True)
+    review_id = Column(
+        String(50), unique=True, nullable=False
+    )  # REV-YYYYMMDD-HHMMSS-XXXX
+    order_id = Column(Integer, ForeignKey("orders.id"))
+    email_id = Column(String(255))
+    customer_email = Column(String(255), nullable=False)
+    subject = Column(Text)
+    confidence_score = Column(Float)
+
+    # Review details
+    items = Column(JSON)  # List of requested items
+    search_results = Column(JSON)  # Search results shown
+
+    # Decision details
+    decision = Column(
+        String(50), nullable=False
+    )  # approve/reject/clarify/alternative/defer
+    status = Column(
+        String(50), nullable=False
+    )  # approved/rejected/needs_clarification/etc
+    review_notes = Column(Text)
+    alternative_items = Column(JSON)  # If alternatives suggested
+
+    # Reviewer info
+    reviewed_by = Column(String(255), default="human_reviewer")
+    reviewed_at = Column(DateTime, nullable=False)
+    review_duration_seconds = Column(Float)
+
+    # Priority and timestamps
+    priority = Column(String(20))  # urgent/high/medium/low
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    order = relationship("Order", backref="review_decisions")

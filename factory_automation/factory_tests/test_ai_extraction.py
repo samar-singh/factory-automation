@@ -3,16 +3,20 @@
 
 import asyncio
 import json
+
+from factory_automation.factory_agents.orchestrator_v3_agentic import (
+    AgenticOrchestratorV3,
+)
 from factory_automation.factory_database.vector_db import ChromaDBClient
-from factory_automation.factory_agents.orchestrator_v3_agentic import AgenticOrchestratorV3
+
 
 async def test_extraction():
     """Test the extract_order_items function with sample emails"""
-    
+
     # Initialize components
     chromadb_client = ChromaDBClient()
     orchestrator = AgenticOrchestratorV3(chromadb_client)
-    
+
     # Sample test emails
     test_emails = [
         {
@@ -36,7 +40,7 @@ async def test_extraction():
             
             Thanks,
             Myntra Procurement Team
-            """
+            """,
         },
         {
             "subject": "Order for Allen Solly Labels",
@@ -53,79 +57,94 @@ async def test_extraction():
             
             Regards,
             Allen Solly
-            """
+            """,
         },
         {
             "subject": "Quick requirement",
             "body": """
             Need 500 tags urgently. Black color preferred.
             Send quotation ASAP.
-            """
-        }
+            """,
+        },
     ]
-    
+
     print("=" * 60)
     print("TESTING AI-POWERED ORDER EXTRACTION")
     print("=" * 60)
-    
+
     # Get the extract_order_items tool
     tools = orchestrator._create_tools()
     extract_tool = None
-    
+
     for tool in tools:
-        if hasattr(tool, '__name__') and tool.__name__ == 'extract_order_items':
+        if hasattr(tool, "__name__") and tool.__name__ == "extract_order_items":
             extract_tool = tool
             break
-    
+
     if not extract_tool:
         print("❌ Could not find extract_order_items tool")
         return
-    
+
     # Test each email
     for i, email in enumerate(test_emails, 1):
         print(f"\n📧 Test Email {i}: {email['subject']}")
         print("-" * 50)
-        
+
         try:
             # Call the extraction function
-            result = await extract_tool(email['body'], has_attachments=False)
-            
+            result = await extract_tool(email["body"], has_attachments=False)
+
             # Parse and display results
             extracted_data = json.loads(result)
-            
-            print(f"✅ Extraction Method: {extracted_data.get('extraction_method', 'unknown')}")
-            print(f"📊 Confidence Level: {extracted_data.get('confidence_level', 'unknown')}")
-            
-            if 'customer_name' in extracted_data:
+
+            print(
+                f"✅ Extraction Method: {extracted_data.get('extraction_method', 'unknown')}"
+            )
+            print(
+                f"📊 Confidence Level: {extracted_data.get('confidence_level', 'unknown')}"
+            )
+
+            if "customer_name" in extracted_data:
                 print(f"👤 Customer: {extracted_data['customer_name']}")
-            
-            if 'order_items' in extracted_data and extracted_data['order_items']:
+
+            if "order_items" in extracted_data and extracted_data["order_items"]:
                 print(f"\n📦 Extracted {len(extracted_data['order_items'])} items:")
-                for item in extracted_data['order_items']:
-                    print(f"  • {item.get('quantity', '?')} x {item.get('item_type', 'unknown')}")
-                    if item.get('color'):
+                for item in extracted_data["order_items"]:
+                    print(
+                        f"  • {item.get('quantity', '?')} x {item.get('item_type', 'unknown')}"
+                    )
+                    if item.get("color"):
                         print(f"    Color: {item['color']}")
-                    if item.get('size'):
+                    if item.get("size"):
                         print(f"    Size: {item['size']}")
-                    if item.get('material'):
+                    if item.get("material"):
                         print(f"    Material: {item['material']}")
-                    if item.get('special_requirements'):
+                    if item.get("special_requirements"):
                         print(f"    Special: {', '.join(item['special_requirements'])}")
             else:
                 print("  ⚠️ No items extracted")
-            
-            if 'delivery_timeline' in extracted_data and extracted_data['delivery_timeline']:
+
+            if (
+                "delivery_timeline" in extracted_data
+                and extracted_data["delivery_timeline"]
+            ):
                 print(f"\n⏰ Delivery: {extracted_data['delivery_timeline']}")
-            
-            if 'missing_information' in extracted_data and extracted_data['missing_information']:
-                print(f"\n❓ Missing Info: {', '.join(extracted_data['missing_information'])}")
-                
+
+            if (
+                "missing_information" in extracted_data
+                and extracted_data["missing_information"]
+            ):
+                print(
+                    f"\n❓ Missing Info: {', '.join(extracted_data['missing_information'])}"
+                )
+
         except Exception as e:
             print(f"❌ Extraction failed: {str(e)}")
-    
+
     print("\n" + "=" * 60)
     print("TEST COMPLETE")
     print("=" * 60)
+
 
 if __name__ == "__main__":
     asyncio.run(test_extraction())

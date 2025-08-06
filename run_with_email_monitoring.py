@@ -15,9 +15,10 @@ os.environ["APP_ENV"] = (
     "production"  # Temporarily set to production to enable monitoring
 )
 
-from factory_automation.main import app
-from factory_automation.factory_config.settings import settings
 import uvicorn
+
+from factory_automation.factory_config.settings import settings
+from factory_automation.main import app
 
 
 async def run_with_monitoring():

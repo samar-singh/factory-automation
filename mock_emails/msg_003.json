@@ -4,7 +4,7 @@
   "from": "H&M India <orders@hm.com>",
   "to": "factory@example.com",
   "subject": "Payment Confirmation - UTR 3421567890",
-  "date": "2025-08-02T17:28:38.790471",
+  "date": "2025-08-05T21:32:52.289994",
   "body": "Dear Partner,\n\nPayment processed for Order #HM-2024-1234:\nAmount: Rs. 45,000\nUTR: 3421567890\nDate: Today\n\nPlease confirm receipt and process the order.\n\nH&M Finance Team",
   "attachments": [],
   "labels": [

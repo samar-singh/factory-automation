@@ -6,14 +6,14 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List
 
-from agents import Agent, Runner, trace, function_tool
+from agents import Agent, Runner, function_tool, trace
 
 from ..factory_config.settings import settings
 from ..factory_database.vector_db import ChromaDBClient
 from ..factory_utils.trace_monitor import trace_monitor
+from .image_processor_agent import ImageProcessorAgent
 from .mock_gmail_agent import MockGmailAgent
 from .order_processor_agent import OrderProcessorAgent
-from .image_processor_agent import ImageProcessorAgent
 
 logger = logging.getLogger(__name__)
 
@@ -21,15 +21,19 @@ logger = logging.getLogger(__name__)
 class AgenticOrchestratorV3:
     """Fully autonomous orchestrator using OpenAI Agents SDK with callable tools"""
 
-    def __init__(self, chromadb_client: ChromaDBClient):
+    def __init__(self, chromadb_client: ChromaDBClient, use_mock_gmail: bool = True):
         """Initialize with ChromaDB and create autonomous agent"""
         self.chromadb_client = chromadb_client
         self.runner = Runner()
         self.is_monitoring = False
 
-        # Initialize mock Gmail for testing
-        self.gmail_agent = MockGmailAgent()
-        
+        # Initialize mock Gmail for testing (can be disabled)
+        if use_mock_gmail:
+            self.gmail_agent = MockGmailAgent()
+        else:
+            self.gmail_agent = None
+            logger.info("Mock Gmail disabled - no automatic email processing")
+
         # Initialize new processors
         self.order_processor = OrderProcessorAgent(chromadb_client)
         self.image_processor = ImageProcessorAgent(chromadb_client)
@@ -97,6 +101,10 @@ Think step by step and use tools appropriately to handle each email completely."
         )
         async def check_emails() -> List[Dict[str, Any]]:
             """Poll for new emails"""
+            if not self.gmail_agent:
+                logger.debug("Gmail agent disabled - no emails to check")
+                return []
+
             try:
                 messages = (
                     self.gmail_agent.users()
@@ -126,12 +134,13 @@ Think step by step and use tools appropriately to handle each email completely."
             email_body: str, has_attachments: bool = False
         ) -> str:
             """Internal function to extract order items using OpenAI GPT-4"""
-            from openai import AsyncOpenAI
             import re
-            
+
+            from openai import AsyncOpenAI
+
             # Initialize OpenAI client
             client = AsyncOpenAI(api_key=settings.openai_api_key)
-            
+
             # Prepare the prompt for GPT-4
             extraction_prompt = f"""
             You are an expert at extracting order information from emails for a garment price tag manufacturing factory.
@@ -182,7 +191,7 @@ Think step by step and use tools appropriately to handle each email completely."
             
             If no clear order items can be extracted, return an appropriate message explaining what information is needed.
             """
-            
+
             try:
                 # Call GPT-4 for intelligent extraction
                 response = await client.chat.completions.create(
@@ -190,28 +199,28 @@ Think step by step and use tools appropriately to handle each email completely."
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are an expert at extracting structured order information from unstructured text. Always return valid JSON."
+                            "content": "You are an expert at extracting structured order information from unstructured text. Always return valid JSON.",
                         },
-                        {
-                            "role": "user",
-                            "content": extraction_prompt
-                        }
+                        {"role": "user", "content": extraction_prompt},
                     ],
                     response_format={"type": "json_object"},
                     temperature=0.1,  # Low temperature for consistent extraction
-                    max_tokens=2000
+                    max_tokens=2000,
                 )
-                
+
                 # Parse the AI response
                 extracted_data = json.loads(response.choices[0].message.content)
-                
+
                 # Add metadata
                 extracted_data["extraction_method"] = "ai_gpt4"
                 extracted_data["has_attachments"] = has_attachments
                 extracted_data["extraction_timestamp"] = datetime.now().isoformat()
-                
+
                 # Enhance with basic pattern matching as fallback
-                if not extracted_data.get("order_items") or len(extracted_data["order_items"]) == 0:
+                if (
+                    not extracted_data.get("order_items")
+                    or len(extracted_data["order_items"]) == 0
+                ):
                     # Fallback to basic pattern matching
                     items = []
                     quantity_patterns = [
@@ -219,7 +228,7 @@ Think step by step and use tools appropriately to handle each email completely."
                         r"quantity[:\s]+(\d+)",
                         r"(\d+)\s+(?:black|blue|green|red|white)\s+tags",
                     ]
-                    
+
                     for pattern in quantity_patterns:
                         matches = re.findall(pattern, email_body.lower())
                         for match in matches:
@@ -227,37 +236,43 @@ Think step by step and use tools appropriately to handle each email completely."
                                 qty = match[0]
                             else:
                                 qty = match
-                            
-                            items.append({
-                                "quantity": int(qty),
-                                "description": f"Extracted quantity: {qty}",
-                                "item_type": "price_tag",  # Default assumption
-                                "extraction_method": "pattern_matching"
-                            })
-                    
+
+                            items.append(
+                                {
+                                    "quantity": int(qty),
+                                    "description": f"Extracted quantity: {qty}",
+                                    "item_type": "price_tag",  # Default assumption
+                                    "extraction_method": "pattern_matching",
+                                }
+                            )
+
                     if items:
                         extracted_data["order_items"] = items
                         extracted_data["confidence_level"] = "low"
                         extracted_data["extraction_method"] = "hybrid_ai_pattern"
-                
+
                 # Log successful extraction
-                logger.info(f"AI extracted {len(extracted_data.get('order_items', []))} items from email")
-                
+                logger.info(
+                    f"AI extracted {len(extracted_data.get('order_items', []))} items from email"
+                )
+
                 return json.dumps(extracted_data, indent=2)
-                
+
             except Exception as e:
-                logger.error(f"AI extraction failed: {str(e)}, falling back to basic extraction")
-                
+                logger.error(
+                    f"AI extraction failed: {str(e)}, falling back to basic extraction"
+                )
+
                 # Fallback to basic extraction
                 items = []
                 import re
-                
+
                 # Basic pattern matching
                 quantity_patterns = [
                     r"(\d+)\s*(pcs|pieces|units|nos|tags)",
                     r"quantity[:\s]+(\d+)",
                 ]
-                
+
                 for pattern in quantity_patterns:
                     matches = re.findall(pattern, email_body.lower())
                     for match in matches:
@@ -267,37 +282,61 @@ Think step by step and use tools appropriately to handle each email completely."
                         else:
                             qty = match
                             unit = "units"
-                        
-                        items.append({
-                            "quantity": int(qty),
-                            "unit": unit,
-                            "description": f"{qty} {unit} extracted via pattern matching",
-                            "item_type": "unknown",
-                            "extraction_method": "fallback_pattern"
-                        })
-                
-                return json.dumps({
-                    "items": items,
-                    "extraction_method": "fallback",
-                    "error": str(e),
-                    "total_items": len(items),
-                    "requires_clarification": True,
-                    "confidence_level": "low"
-                })
+
+                        items.append(
+                            {
+                                "quantity": int(qty),
+                                "unit": unit,
+                                "description": f"{qty} {unit} extracted via pattern matching",
+                                "item_type": "unknown",
+                                "extraction_method": "fallback_pattern",
+                            }
+                        )
+
+                return json.dumps(
+                    {
+                        "items": items,
+                        "extraction_method": "fallback",
+                        "error": str(e),
+                        "total_items": len(items),
+                        "requires_clarification": True,
+                        "confidence_level": "low",
+                    }
+                )
 
         # NOT adding extract_order_items as tool - use process_complete_order instead
+
+        # Track processed emails to prevent duplicates
+        self._processed_emails = set()
 
         # Complete order processing tool with full workflow
         @function_tool(
             name_override="process_complete_order",
-            description_override="Process complete order with attachments, ChromaDB search, and human review workflow"
+            description_override="Process complete order with attachments, ChromaDB search, and human review workflow",
         )
         async def process_complete_order(
-            email_subject: str,
-            email_body: str,
-            sender_email: str
+            email_subject: str, email_body: str, sender_email: str
         ) -> str:
             """Process complete order using OrderProcessorAgent"""
+
+            # Create a unique key for this email
+            email_key = f"{sender_email}:{email_subject}"
+
+            # Check if already processed
+            if email_key in self._processed_emails:
+                logger.warning(f"Email already processed: {email_key}")
+                return json.dumps(
+                    {
+                        "status": "duplicate",
+                        "message": "This email has already been processed",
+                        "email_subject": email_subject,
+                        "sender": sender_email,
+                    }
+                )
+
+            # Mark as processed
+            self._processed_emails.add(email_key)
+
             try:
                 # Use the OrderProcessorAgent for comprehensive processing
                 result = await self.order_processor.process_order_email(
@@ -305,69 +344,76 @@ Think step by step and use tools appropriately to handle each email completely."
                     email_body=email_body,
                     email_date=datetime.now(),
                     sender_email=sender_email,
-                    attachments=[]  # Empty for now, can be extended later
+                    attachments=[],  # Empty for now, can be extended later
                 )
-                
+
                 # Format response
                 response = {
                     "order_id": result.order.order_id if result.order else "N/A",
-                    "customer": result.order.customer.company_name if result.order else "Unknown",
+                    "customer": (
+                        result.order.customer.company_name
+                        if result.order
+                        else "Unknown"
+                    ),
                     "total_items": len(result.order.items) if result.order else 0,
-                    "extraction_confidence": result.order.extraction_confidence if result.order else 0,
+                    "extraction_confidence": (
+                        result.order.extraction_confidence if result.order else 0
+                    ),
                     "recommended_action": result.recommended_action,
-                    "approval_status": result.order.approval_status if result.order else "failed",
+                    "approval_status": (
+                        result.order.approval_status if result.order else "failed"
+                    ),
                     "inventory_matches": len(result.inventory_matches),
                     "processing_time_ms": result.processing_time_ms,
-                    "items": []
+                    "items": [],
                 }
-                
+
                 # Add item details
                 if result.order:
                     for item in result.order.items[:5]:  # Limit to first 5 items
-                        response["items"].append({
-                            "tag_code": item.tag_specification.tag_code,
-                            "quantity": item.quantity_ordered,
-                            "brand": item.brand,
-                            "match_score": item.inventory_match_score or 0
-                        })
-                
+                        response["items"].append(
+                            {
+                                "tag_code": item.tag_specification.tag_code,
+                                "quantity": item.quantity_ordered,
+                                "brand": item.brand,
+                                "match_score": item.inventory_match_score or 0,
+                            }
+                        )
+
                 # Add any errors or warnings
                 if result.errors:
                     response["errors"] = result.errors
                 if result.warnings:
                     response["warnings"] = result.warnings
-                
-                logger.info(f"Processed complete order {response['order_id']} with action: {response['recommended_action']}")
-                
+
+                logger.info(
+                    f"Processed complete order {response['order_id']} with action: {response['recommended_action']}"
+                )
+
                 return json.dumps(response, indent=2)
-                
+
             except Exception as e:
                 logger.error(f"Error in process_complete_order: {e}")
-                return json.dumps({
-                    "error": str(e),
-                    "status": "failed"
-                })
-        
+                return json.dumps({"error": str(e), "status": "failed"})
+
         tools.append(process_complete_order)
 
         # Process image attachments tool
         @function_tool(
             name_override="process_tag_image",
-            description_override="Process tag image with Qwen2.5VL and store in ChromaDB"
+            description_override="Process tag image with Qwen2.5VL and store in ChromaDB",
         )
         async def process_tag_image(
-            image_path: str,
-            order_id: str,
-            customer_name: str
+            image_path: str, order_id: str, customer_name: str
         ) -> str:
             """Process and analyze tag image"""
             try:
                 result = await self.image_processor.process_and_store_image(
                     image_path=image_path,
                     order_id=order_id,
-                    customer_name=customer_name
+                    customer_name=customer_name,
                 )
-                
+
                 response = {
                     "status": result.get("status"),
                     "image_hash": result.get("image_hash"),
@@ -375,15 +421,15 @@ Think step by step and use tools appropriately to handle each email completely."
                     "brand": result.get("analysis", {}).get("brand"),
                     "text_content": result.get("analysis", {}).get("text_content"),
                     "colors": result.get("analysis", {}).get("colors"),
-                    "stored_in_chromadb": result.get("status") == "success"
+                    "stored_in_chromadb": result.get("status") == "success",
                 }
-                
+
                 return json.dumps(response, indent=2)
-                
+
             except Exception as e:
                 logger.error(f"Error processing tag image: {e}")
                 return json.dumps({"error": str(e), "status": "failed"})
-        
+
         tools.append(process_tag_image)
 
         # Inventory search tool
@@ -391,11 +437,7 @@ Think step by step and use tools appropriately to handle each email completely."
             name_override="search_inventory",
             description_override="Search inventory using semantic similarity in ChromaDB",
         )
-        def search_inventory(
-            query: str,
-            min_quantity: int = 0,
-            limit: int = 5
-        ) -> str:
+        def search_inventory(query: str, min_quantity: int = 0, limit: int = 5) -> str:
             """Search ChromaDB for matching inventory"""
             try:
                 # Build metadata filter
@@ -603,23 +645,27 @@ Think step by step and use tools appropriately to handle each email completely."
             try:
                 # Construct prompt for autonomous processing
                 prompt = f"""
-Process this email completely using your available tools:
+Process this email ONCE using your available tools:
 
 From: {email_data.get('from', 'Unknown')}
 Subject: {email_data.get('subject', 'No subject')}
 Body: {email_data.get('body', 'No body')}
 Attachments: {len(email_data.get('attachments', []))} files
 
-Steps to follow:
-1. Analyze the email to understand its type and intent
-2. Extract relevant information based on email type
-3. If it's an order, search inventory for matches
-4. Retrieve customer context if available
-5. Make appropriate decisions
-6. Generate necessary documents
-7. Update order status if needed
+IMPORTANT: Only call process_complete_order ONCE per email. Do not process the same email multiple times.
 
-Provide a complete summary of all actions taken and results.
+Steps to follow:
+1. If this is an order email, call process_complete_order ONCE with the email details
+2. Based on the result, provide a summary of what happened
+3. Do NOT call process_complete_order again for the same email
+
+The process_complete_order tool will handle all the workflow including:
+- Extracting order details
+- Searching inventory
+- Creating human review if needed
+- All decision making
+
+Just call it once and report the results.
 """
 
                 # Start monitoring this trace
@@ -721,6 +767,11 @@ Provide a complete summary of all actions taken and results.
 
     async def start_email_monitoring(self):
         """Start autonomous email monitoring with tracing"""
+        # Skip monitoring if no Gmail agent
+        if not self.gmail_agent:
+            logger.info("Email monitoring disabled - no Gmail agent configured")
+            return
+
         self.is_monitoring = True
         logger.info("Starting autonomous email monitoring...")
 

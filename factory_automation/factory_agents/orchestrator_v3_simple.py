@@ -3,7 +3,7 @@
 import logging
 from typing import Any, Dict
 
-from agents import Agent, Runner, trace, function_tool
+from agents import Agent, Runner, function_tool, trace
 
 from ..factory_database.vector_db import ChromaDBClient
 from ..factory_utils.trace_monitor import trace_monitor

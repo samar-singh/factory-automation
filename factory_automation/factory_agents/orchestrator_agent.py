@@ -5,11 +5,11 @@ import logging
 import time
 from typing import Any, Dict
 
+from ..factory_database.vector_db import ChromaDBClient
 from .base import BaseAgent
 from .email_monitor_agent import EmailMonitorAgent
 from .inventory_matcher_agent import InventoryMatcherAgent
 from .order_interpreter_agent import OrderInterpreterAgent
-from ..factory_database.vector_db import ChromaDBClient
 
 logger = logging.getLogger(__name__)
 

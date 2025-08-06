@@ -2,8 +2,8 @@
 
 import logging
 from datetime import datetime
-from typing import Any, Dict
 from functools import wraps
+from typing import Any, Dict
 
 from agents import Agent, Runner, function_tool
 
@@ -132,13 +132,14 @@ Use your tools step by step.""",
                 }
             )
 
-            from openai import OpenAI
-            import re
             import json
-            
+            import re
+
+            from openai import OpenAI
+
             # Initialize OpenAI client synchronously
             client = OpenAI(api_key=settings.openai_api_key)
-            
+
             # Prepare the prompt for GPT-4
             extraction_prompt = f"""
             You are an expert at extracting order information from emails for a garment price tag manufacturing factory.
@@ -179,7 +180,7 @@ Use your tools step by step.""",
                 "confidence_level": "high/medium/low based on clarity of requirements"
             }}
             """
-            
+
             try:
                 # Call GPT-4 for intelligent extraction
                 response = client.chat.completions.create(
@@ -187,45 +188,48 @@ Use your tools step by step.""",
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are an expert at extracting structured order information from unstructured text. Always return valid JSON."
+                            "content": "You are an expert at extracting structured order information from unstructured text. Always return valid JSON.",
                         },
-                        {
-                            "role": "user",
-                            "content": extraction_prompt
-                        }
+                        {"role": "user", "content": extraction_prompt},
                     ],
                     response_format={"type": "json_object"},
                     temperature=0.1,
-                    max_tokens=2000
+                    max_tokens=2000,
                 )
-                
+
                 # Parse the AI response
                 extracted_data = json.loads(response.choices[0].message.content)
-                
+
                 # Add metadata
                 extracted_data["extraction_method"] = "ai_gpt4"
                 extracted_data["extraction_timestamp"] = datetime.now().isoformat()
-                
+
                 # Log successful extraction
-                logger.info(f"AI extracted {len(extracted_data.get('order_items', []))} items from email")
-                
+                logger.info(
+                    f"AI extracted {len(extracted_data.get('order_items', []))} items from email"
+                )
+
                 result = json.dumps(extracted_data, indent=2)
-                
+
             except Exception as e:
-                logger.error(f"AI extraction failed: {str(e)}, falling back to basic extraction")
-                
+                logger.error(
+                    f"AI extraction failed: {str(e)}, falling back to basic extraction"
+                )
+
                 # Fallback to basic pattern matching
                 body_lower = email_body.lower()
-                
+
                 # Extract quantities
-                quantities = re.findall(r"(\d+)\s*(?:pcs|pieces|tags|units)?", body_lower)
-                
+                quantities = re.findall(
+                    r"(\d+)\s*(?:pcs|pieces|tags|units)?", body_lower
+                )
+
                 # Extract colors
                 colors = []
                 for color in ["black", "red", "blue", "green", "white", "silver"]:
                     if color in body_lower:
                         colors.append(color)
-                
+
                 # Extract item types
                 items = []
                 if "tag" in body_lower:

@@ -5,7 +5,6 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
-
 from openai import AsyncOpenAI
 
 from ..factory_config.settings import settings

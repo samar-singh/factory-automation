@@ -6,16 +6,16 @@ import time
 from typing import Any, Dict
 
 from agents import Agent, Runner
-from .base import BaseAgent
-from .email_monitor_agent import EmailMonitorAgent
-from .inventory_matcher_agent import InventoryMatcherAgent
-from .order_interpreter_agent import OrderInterpreterAgent
 
 # TODO: Implement these agents
 # from factory_agents.document_creator import DocumentCreatorAgent
 # from factory_agents.payment_tracker import PaymentTrackerAgent
 # from factory_agents.approval_manager import ApprovalManagerAgent
 from ..factory_rag.chromadb_client import ChromaDBClient
+from .base import BaseAgent
+from .email_monitor_agent import EmailMonitorAgent
+from .inventory_matcher_agent import InventoryMatcherAgent
+from .order_interpreter_agent import OrderInterpreterAgent
 
 # TODO: Implement database CRUD operations
 # from factory_database.crud import get_customer_history, get_thread_history

@@ -1,0 +1,21 @@
+{
+  "id": "msg_005",
+  "threadId": "thread_004",
+  "from": "Zara Operations <ops@zara.com>",
+  "to": "factory@example.com",
+  "subject": "Sample Request - Premium Leather Tags",
+  "date": "2025-08-02T17:58:38.790476",
+  "body": "Hello,\n\nWe're exploring premium leather tags for our new collection:\n- Genuine leather material\n- Embossed logo\n- Gold foil stamping\n- Need 10 samples in different colors\n\nPlease share:\n1. Sample images\n2. Pricing for 5000 pieces\n3. Lead time\n\nAttached mood board for reference.\n\nBest,\nZara Design Team",
+  "attachments": [
+    {
+      "filename": "leather_tag_mood_board.png",
+      "mimeType": "image/png",
+      "size": 245000,
+      "data": null
+    }
+  ],
+  "labels": [
+    "INBOX",
+    "UNREAD"
+  ]
+}

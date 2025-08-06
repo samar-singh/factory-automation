@@ -17,8 +17,9 @@ load_dotenv()
 sys.path.append(str(Path(__file__).parent))
 
 from agents import Agent, Runner, function_tool
-from factory_automation.factory_database.vector_db import ChromaDBClient
+
 from factory_automation.factory_agents.mock_gmail_agent import MockGmailAgent
+from factory_automation.factory_database.vector_db import ChromaDBClient
 from factory_automation.factory_rag.excel_ingestion import ExcelInventoryIngestion
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")

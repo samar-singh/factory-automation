@@ -49,3 +49,8 @@ def init_database():
     except Exception as e:
         logger.error(f"Failed to initialize database: {str(e)}")
         raise
+
+
+def get_db_session() -> Session:
+    """Get a new database session."""
+    return SessionLocal()

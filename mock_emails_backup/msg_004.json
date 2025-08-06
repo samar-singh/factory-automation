@@ -1,0 +1,14 @@
+{
+  "id": "msg_004",
+  "threadId": "thread_001",
+  "from": "Allen Solly <orders@allensolly.com>",
+  "to": "factory@example.com",
+  "subject": "Re: New Order - 500 Black Tags Required",
+  "date": "2025-08-02T17:43:38.790473",
+  "body": "Following up on our previous email.\n\nCan you also provide:\n- 200 Blue tags with white text\n- Same specifications as black tags\n\nThis is urgent, please prioritize.\n\nThanks",
+  "attachments": [],
+  "labels": [
+    "INBOX",
+    "UNREAD"
+  ]
+}
