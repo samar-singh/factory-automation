@@ -58,7 +58,9 @@ class EnhancedRAGSearch:
         """Initialize BM25 index from ChromaDB collection"""
         try:
             # Get all documents from ChromaDB
-            results = self.chromadb_client.collection.get(include=["documents", "metadatas"])
+            results = self.chromadb_client.collection.get(
+                include=["documents", "metadatas"]
+            )
 
             if results and results["documents"]:
                 # Tokenize documents for BM25
@@ -148,7 +150,10 @@ class EnhancedRAGSearch:
         # 4. Rerank if enabled
         if self.enable_reranking and self.reranker and len(merged_results) > 0:
             final_results, rerank_stats = self.reranker.rerank_search_results(
-                query, merged_results, top_k=rerank_top_k, score_threshold=score_threshold
+                query,
+                merged_results,
+                top_k=rerank_top_k,
+                score_threshold=score_threshold,
             )
             search_stats["after_reranking"] = len(final_results)
             search_stats["rerank_stats"] = rerank_stats
@@ -158,7 +163,8 @@ class EnhancedRAGSearch:
         # 5. Apply final score threshold if not done in reranking
         if score_threshold and not self.enable_reranking:
             final_results = [
-                r for r in final_results
+                r
+                for r in final_results
                 if r.get("score", 0) >= score_threshold
                 or r.get("rerank_score", 0) >= score_threshold
             ]
@@ -192,9 +198,12 @@ class EnhancedRAGSearch:
                 result = {
                     "id": results["ids"][0][i],
                     "text": results["documents"][0][i] if results["documents"] else "",
-                    "metadata": results["metadatas"][0][i] if results["metadatas"] else {},
+                    "metadata": (
+                        results["metadatas"][0][i] if results["metadatas"] else {}
+                    ),
                     "distance": results["distances"][0][i],
-                    "score": 1 - results["distances"][0][i],  # Convert distance to similarity
+                    "score": 1
+                    - results["distances"][0][i],  # Convert distance to similarity
                     "source": "semantic",
                 }
                 formatted_results.append(result)

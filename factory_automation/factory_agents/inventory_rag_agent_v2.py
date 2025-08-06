@@ -103,24 +103,43 @@ class InventoryRAGAgentV2(BaseAgent):
                 break
 
         # Materials
-        materials = ["cotton", "polyester", "leather", "paper", "plastic", "satin", "silk"]
+        materials = [
+            "cotton",
+            "polyester",
+            "leather",
+            "paper",
+            "plastic",
+            "satin",
+            "silk",
+        ]
         for material in materials:
             if material in text.lower():
                 specs["material"] = material
                 break
 
         # Tag types
-        tag_types = ["main tag", "care label", "price tag", "hang tag", "woven tag", "barcode"]
+        tag_types = [
+            "main tag",
+            "care label",
+            "price tag",
+            "hang tag",
+            "woven tag",
+            "barcode",
+        ]
         for tag_type in tag_types:
             if tag_type in text.lower():
                 specs["tag_type"] = tag_type
                 break
 
         # Special requirements
-        if any(word in text.lower() for word in ["sustainable", "eco", "fsc", "recycled"]):
+        if any(
+            word in text.lower() for word in ["sustainable", "eco", "fsc", "recycled"]
+        ):
             specs["sustainable"] = True
 
-        if any(word in text.lower() for word in ["urgent", "rush", "asap", "immediate"]):
+        if any(
+            word in text.lower() for word in ["urgent", "rush", "asap", "immediate"]
+        ):
             specs["urgent"] = True
 
         return specs
@@ -128,7 +147,9 @@ class InventoryRAGAgentV2(BaseAgent):
     def process_order_request(self, order_text: str) -> Dict[str, Any]:
         """Process order with enhanced search and reranking"""
 
-        logger.info(f"Processing order request with enhanced search: {order_text[:100]}...")
+        logger.info(
+            f"Processing order request with enhanced search: {order_text[:100]}..."
+        )
 
         # Extract order details
         quantity_needed = self.extract_quantity_from_text(order_text)
@@ -174,7 +195,8 @@ class InventoryRAGAgentV2(BaseAgent):
                 "confidence_score": confidence_score,
                 "confidence_level": result.get("confidence_level", "unknown"),
                 "confidence_percentage": result.get("confidence_percentage", 0),
-                "sufficient_stock": result["metadata"].get("stock", 0) >= quantity_needed,
+                "sufficient_stock": result["metadata"].get("stock", 0)
+                >= quantity_needed,
                 "match_text": result.get("text", "")[:200],
                 "search_method": result.get("source", "unknown"),
                 "has_rerank_score": "rerank_score" in result,
@@ -293,7 +315,9 @@ class InventoryRAGAgentV2(BaseAgent):
         # Filter out the original item and apply stock filter
         alternatives = []
         for result in results:
-            if result["id"] != item_code and (exclude_ids is None or result["id"] not in exclude_ids):
+            if result["id"] != item_code and (
+                exclude_ids is None or result["id"] not in exclude_ids
+            ):
                 if min_stock == 0 or result["metadata"].get("stock", 0) >= min_stock:
                     alternatives.append(result)
 

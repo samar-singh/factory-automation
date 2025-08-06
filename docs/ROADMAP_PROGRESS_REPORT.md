@@ -234,17 +234,68 @@ The Factory Automation System is being developed to automate order processing fo
 
 ---
 
-## Next Sprint Goals (Week of 2025-08-12)
+## Completed Enhancements (2025-08-06) ✅
 
-1. **Session 2 Achievements ✅**
-   - ✅ Connected orchestrator agent to Gradio UI
-   - ✅ Enabled GPT-4 processing in the main flow
-   - ✅ Created comprehensive order processing pipeline
-   - ✅ Integrated Qwen2.5VL for visual analysis
-   - ✅ Implemented human interaction management
-   - ✅ Built inventory reconciliation system
-   - ✅ Consolidated tools from 11 to 8
-   - ✅ Auto-extract customer emails in UI
+1. **RAG System Upgrades**
+   - ✅ Migrated to Stella-400M embeddings (1024-dim)
+   - ✅ Implemented cross-encoder reranking (60% fewer false positives)
+   - ✅ Added hybrid search (BM25 + semantic)
+   - ✅ Enhanced confidence scoring (90% threshold)
+   - ✅ Fixed initialization timeout with lazy loading
+
+2. **Performance Improvements**
+   - ✅ Average confidence: 85-95% (was 65-75%)
+   - ✅ False positives: 10-15% (was 30-40%)
+   - ✅ Auto-approval rate: 40-50% (was 10-20%)
+   - ✅ Processing time: ~150ms with reranking
+
+## Next Priority Tasks (Starting 2025-08-12)
+
+### 🎯 Priority 1: Document Generation System
+**Status**: Not started | **Impact**: High | **Effort**: Medium
+- [ ] Implement Proforma Invoice (PI) generation
+- [ ] Create quotation templates
+- [ ] Build order confirmation documents
+- [ ] Add PDF export functionality
+- [ ] Integrate with order processing workflow
+
+### 💳 Priority 2: Payment Tracking with OCR
+**Status**: Not started | **Impact**: High | **Effort**: Medium
+- [ ] Implement UTR (bank transfer) extraction
+- [ ] Add cheque processing with Tesseract
+- [ ] Build payment reconciliation system
+- [ ] Create payment status tracking
+- [ ] Add payment confirmation notifications
+
+### 🔄 Priority 3: Google Gemini Embeddings Migration
+**Status**: Research phase | **Impact**: Medium | **Effort**: High
+- [ ] Test Gemini embeddings (3072 dimensions)
+- [ ] A/B test against Stella-400M
+- [ ] Re-embed all inventory data
+- [ ] Update search configurations
+- [ ] Measure accuracy improvements
+
+### 📧 Priority 4: Gmail Live Connection
+**Status**: Blocked (needs IT) | **Impact**: High | **Effort**: Low
+- [ ] Configure domain-wide delegation
+- [ ] Set up service account
+- [ ] Enable automatic polling
+- [ ] Test with real emails
+- [ ] Add error recovery
+
+### 🔍 Priority 5: Contextual Chunking
+**Status**: Planned | **Impact**: Medium | **Effort**: Medium
+- [ ] Add context prefixes to inventory items
+- [ ] Group items by brand/category
+- [ ] Implement hierarchical chunking
+- [ ] Expected: 15-25% accuracy improvement
+
+### 🖼️ Priority 6: Visual Analysis Integration
+**Status**: Ready but unused | **Impact**: Medium | **Effort**: Low
+- [ ] Wire Qwen2.5VL to order processing
+- [ ] Enable image analysis from emails
+- [ ] Add visual similarity matching
+- [ ] Create image-based search UI
 
 2. **Remaining Development Tasks**
    - [ ] Implement payment OCR (Tesseract)

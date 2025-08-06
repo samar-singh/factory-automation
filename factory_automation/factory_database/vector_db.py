@@ -15,7 +15,7 @@ class ChromaDBClient:
     def __init__(
         self,
         persist_directory: str = "./chroma_data",
-        collection_name: str = "tag_inventory",
+        collection_name: str = "tag_inventory_stella",
     ):
         """Initialize ChromaDB client."""
         self.persist_directory = persist_directory

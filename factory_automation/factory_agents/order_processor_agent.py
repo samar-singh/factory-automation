@@ -15,7 +15,6 @@ from ..factory_database.connection import get_db
 from ..factory_database.models import Customer, Order
 from ..factory_database.models import OrderItem as DBOrderItem
 from ..factory_database.vector_db import ChromaDBClient
-from ..factory_rag.enhanced_search import EnhancedRAGSearch
 from ..factory_models.order_models import (
     Attachment,
     AttachmentType,
@@ -35,6 +34,7 @@ from ..factory_models.order_models import (
     TagSpecification,
     TagType,
 )
+from ..factory_rag.enhanced_search import EnhancedRAGSearch
 from .human_interaction_manager import HumanInteractionManager
 from .image_processor_agent import ImageProcessorAgent
 
@@ -54,13 +54,21 @@ class OrderProcessorAgent:
         self.openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
         self.image_processor = ImageProcessorAgent(chromadb_client)
         self.human_manager = human_manager or HumanInteractionManager()
-        
-        # Initialize enhanced search with reranking
-        self.enhanced_search = EnhancedRAGSearch(
-            chromadb_client=chromadb_client,
-            enable_reranking=True,
-            enable_hybrid_search=True
-        )
+
+        # Lazy-load enhanced search to avoid startup timeout
+        self._enhanced_search = None
+
+    @property
+    def enhanced_search(self):
+        """Lazy-load enhanced search when first accessed"""
+        if self._enhanced_search is None:
+            logger.info("Initializing enhanced search on first use...")
+            self._enhanced_search = EnhancedRAGSearch(
+                chromadb_client=self.chromadb_client,
+                enable_reranking=True,
+                enable_hybrid_search=True,
+            )
+        return self._enhanced_search
 
     async def process_order_email(
         self,
@@ -441,7 +449,7 @@ class OrderProcessorAgent:
         for item in order.items:
             # Create search query from item details
             search_query = f"{item.brand} {item.tag_specification.tag_code} {item.tag_specification.tag_type.value}"
-            
+
             # Add additional context to query
             if item.tag_specification.color:
                 search_query += f" {item.tag_specification.color}"
@@ -453,14 +461,14 @@ class OrderProcessorAgent:
                 query=search_query,
                 n_results=5,
                 n_candidates=20,  # Get more candidates for reranking
-                filters={"brand": item.brand} if item.brand else None
+                filters={"brand": item.brand} if item.brand else None,
             )
 
             # Process enhanced results
             for result in search_results:
                 # Use rerank score if available, otherwise regular score
                 confidence = result.get("rerank_score", result.get("score", 0))
-                
+
                 match = {
                     "item_id": item.item_id,
                     "tag_code": item.tag_specification.tag_code,
@@ -471,14 +479,17 @@ class OrderProcessorAgent:
                     "search_method": result.get("source", "unknown"),
                     "has_rerank_score": "rerank_score" in result,
                     "confidence_level": result.get("confidence_level", "unknown"),
-                    "confidence_percentage": result.get("confidence_percentage", 0)
+                    "confidence_percentage": result.get("confidence_percentage", 0),
                 }
                 all_matches.append(match)
 
                 # Update item with best match info
-                if not item.inventory_match_score or confidence > item.inventory_match_score:
+                if (
+                    not item.inventory_match_score
+                    or confidence > item.inventory_match_score
+                ):
                     item.inventory_match_score = confidence
-                    
+
                 item.matched_inventory_items.append(match)
 
             # Log search performance
