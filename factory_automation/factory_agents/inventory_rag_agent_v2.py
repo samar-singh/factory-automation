@@ -53,44 +53,6 @@ class InventoryRAGAgentV2(BaseAgent):
             f"Initialized Enhanced Inventory RAG Agent with reranking={enable_reranking}, hybrid={enable_hybrid_search}"
         )
 
-    def extract_quantity_from_text(self, text: str) -> Optional[int]:
-        """Extract quantity from order text"""
-        patterns = [
-            r"(\d+)\s*(?:tags?|pieces?|units?|nos?|numbers?|pcs?)",
-            r"(?:quantity|qty|need|require|want)[:\s]+(\d+)",
-            r"(\d+)\s+\w+\s+tags?",
-            r"(\d+)\s+(?:black|blue|white|red|green|yellow)\s+tags?",
-        ]
-
-        for pattern in patterns:
-            match = re.search(pattern, text.lower())
-            if match:
-                return int(match.group(1))
-
-        return None
-
-    def extract_brand_from_text(self, text: str) -> Optional[str]:
-        """Extract brand name from order text"""
-        known_brands = [
-            "ALLEN SOLLY",
-            "MYNTRA",
-            "PETER ENGLAND",
-            "AMAZON",
-            "LIFE STYLE",
-            "NETPLAY",
-            "VH DLS",
-            "WOTNOT",
-            "STREET 808",
-            "FM",
-        ]
-
-        text_upper = text.upper()
-        for brand in known_brands:
-            if brand in text_upper:
-                return brand
-
-        return None
-
     def extract_specifications(self, text: str) -> Dict[str, Any]:
         """Extract additional specifications from order text"""
         specs = {}
@@ -151,18 +113,14 @@ class InventoryRAGAgentV2(BaseAgent):
             f"Processing order request with enhanced search: {order_text[:100]}..."
         )
 
-        # Extract order details
-        quantity_needed = self.extract_quantity_from_text(order_text)
-        if not quantity_needed:
-            quantity_needed = 1
-
-        brand_filter = self.extract_brand_from_text(order_text)
+        # Note: Quantity and brand extraction should be done by the AI in OrderProcessorAgent
+        # This agent focuses purely on inventory matching, not order parsing
+        # Using defaults for standalone testing only
+        quantity_needed = 1  # Default quantity for matching purposes
         specifications = self.extract_specifications(order_text)
 
-        # Build metadata filters for ChromaDB
-        filters = {}
-        if brand_filter:
-            filters["brand"] = brand_filter
+        # No hardcoded filters - let the semantic search handle brand matching
+        filters = None
 
         # Perform enhanced search with reranking
         search_results, search_stats = self.enhanced_search.search(
@@ -209,7 +167,6 @@ class InventoryRAGAgentV2(BaseAgent):
         return {
             "order_text": order_text,
             "quantity_needed": quantity_needed,
-            "brand_filter": brand_filter,
             "specifications": specifications,
             "matches": matches,
             "recommended_action": action,
@@ -221,7 +178,7 @@ class InventoryRAGAgentV2(BaseAgent):
         }
 
     def _determine_action(
-        self, matches: List[Dict[str, Any]], quantity_needed: int
+        self, matches: List[Dict[str, Any]], quantity_needed: int = 1
     ) -> Tuple[str, str]:
         """Determine action based on enhanced confidence scoring"""
 

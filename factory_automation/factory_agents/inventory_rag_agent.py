@@ -1,7 +1,6 @@
 """Inventory RAG Agent - Integrates RAG search into the order processing workflow"""
 
 import logging
-import re
 from typing import Any, Dict, List, Optional
 
 from ..factory_rag.excel_ingestion import ExcelInventoryIngestion
@@ -25,55 +24,16 @@ class InventoryRAGAgent(BaseAgent):
         self.HIGH_CONFIDENCE = 0.85
         self.MEDIUM_CONFIDENCE = 0.70
 
-    def extract_quantity_from_text(self, text: str) -> Optional[int]:
-        """Extract quantity from order text"""
-        # Look for patterns like "500 tags", "need 1000", "quantity: 200"
-        patterns = [
-            r"(\d+)\s*(?:tags?|pieces?|units?|nos?|numbers?)",
-            r"(?:quantity|qty|need|require)[:\s]+(\d+)",
-            r"(\d+)\s+\w+\s+tags?",
-        ]
-
-        for pattern in patterns:
-            match = re.search(pattern, text.lower())
-            if match:
-                return int(match.group(1))
-
-        return None
-
-    def extract_brand_from_text(self, text: str) -> Optional[str]:
-        """Extract brand name from order text"""
-        # Known brands from Excel files
-        known_brands = [
-            "ALLEN SOLLY",
-            "MYNTRA",
-            "PETER ENGLAND",
-            "AMAZON",
-            "LIFE STYLE",
-            "NETPLAY",
-            "VH DLS",
-            "WOTNOT",
-        ]
-
-        text_upper = text.upper()
-        for brand in known_brands:
-            if brand in text_upper:
-                return brand
-
-        return None
-
     def process_order_request(self, order_text: str) -> Dict[str, Any]:
         """Process an order request and find matching inventory items"""
 
         logger.info(f"Processing order request: {order_text}")
 
-        # Extract quantity needed
-        quantity_needed = self.extract_quantity_from_text(order_text)
-        if not quantity_needed:
-            quantity_needed = 1  # Default to 1 if not specified
-
-        # Extract brand if mentioned
-        brand_filter = self.extract_brand_from_text(order_text)
+        # Note: Quantity and brand extraction should be done by AI in OrderProcessorAgent
+        # This agent focuses purely on inventory matching
+        # Using defaults for standalone testing only
+        quantity_needed = 1  # Default quantity for matching purposes
+        brand_filter = None  # Let semantic search handle brand matching
 
         # Search inventory
         search_results = self.rag_system.search_inventory(
