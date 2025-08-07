@@ -11,7 +11,7 @@ Building an automated system for a garment price tag manufacturing factory to:
 - Track payments (UTR/cheques)
 - Provide real-time dashboard
 
-## Current Status (Last Updated: 2025-08-06 Evening)
+## Current Status (Last Updated: 2025-08-07 Evening)
 
 ### GitHub Repository
 
@@ -69,8 +69,16 @@ Building an automated system for a garment price tag manufacturing factory to:
    - Interactive testing tools
    - Code formatting with black/ruff/isort
 
-### Recent Updates (2025-08-06 Evening) 🆕
+### Recent Updates (2025-08-07 Evening) 🆕
 
+**Major Codebase Cleanup:**
+- ✅ **Removed 60+ unused files**: Cleaned up experimental/test code
+- ✅ **Consolidated Inventory Agents**: Merged v1 and v2 into single enhanced version
+- ✅ **Organized Utilities**: Moved 12 data prep scripts to utilities/ folder
+- ✅ **Clean Repository**: Root reduced from 100+ to 21 items
+- ✅ **Documentation**: Comprehensive README with project structure
+
+**Previous Session (2025-08-06):**
 - ✅ **Fixed Enhanced RAG Integration**: Resolved initialization timeout with lazy loading
 - ✅ **Stella Embeddings Active**: Using 1024-dim `tag_inventory_stella` collection
 - ✅ **Cross-Encoder Reranking**: Working with 60% fewer false positives

@@ -36,7 +36,6 @@ class HumanReviewInterface:
         with gr.Blocks(
             title="Human Review Dashboard", theme=gr.themes.Soft()
         ) as interface:
-
             gr.Markdown("# 🔍 Human Review Dashboard")
             gr.Markdown(
                 "Review and approve orders that need manual intervention (<90% confidence)"
@@ -46,7 +45,6 @@ class HumanReviewInterface:
             selected_review_state = gr.State(value=None)
 
             with gr.Tabs() as tabs:
-
                 # Tab 1: Review Queue
                 with gr.TabItem("📋 Review Queue", id=0):
                     with gr.Row():

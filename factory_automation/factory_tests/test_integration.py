@@ -15,9 +15,6 @@ try:
         OrchestratorWithHuman,
     )
     from factory_automation.factory_database.vector_db import ChromaDBClient
-    from factory_automation.factory_ui.human_review_interface import (
-        HumanReviewInterface,
-    )
 
     print("✅ Core imports successful")
 except ImportError as e:
@@ -27,13 +24,10 @@ except ImportError as e:
 # Test 2: New components
 print("\n2. Testing new components...")
 try:
-    from factory_automation.factory_agents.image_processor_agent import (
-        ImageProcessorAgent,
-    )
-    from factory_automation.factory_agents.order_processor_agent import (
-        OrderProcessorAgent,
-    )
-    from factory_automation.factory_models.order_models import ExtractedOrder
+    # These imports are for testing only - checking if modules exist
+    import factory_automation.factory_agents.image_processor_agent
+    import factory_automation.factory_agents.order_processor_agent
+    import factory_automation.factory_models.order_models
 
     print("✅ New components import successful")
 except ImportError as e:

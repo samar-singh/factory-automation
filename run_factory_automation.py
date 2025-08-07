@@ -149,7 +149,6 @@ def start_web_interface():
 
     # Create combined interface
     with gr.Blocks(title="Factory Automation", theme=gr.themes.Soft()) as app:
-
         gr.Markdown("# 🏭 Factory Automation System")
 
         with gr.Tabs():
