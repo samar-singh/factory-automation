@@ -71,6 +71,21 @@ factory-automation/
 
 Standalone utilities for data preparation (not part of main execution flow):
 
+### Inventory Ingestion Tools
+```bash
+# Reset and reingest all inventory with consistent embeddings
+python utilities/reset_and_ingest.py
+
+# Quick ingestion scripts
+python utilities/ingest_inventory.py        # Standard ingestion
+python utilities/ingest_inventory_fast.py   # Fast ingestion
+python utilities/run_ingestion.py           # Alternative ingestion
+
+# Migration tools
+python utilities/migrate_to_stella.py       # Migrate to Stella embeddings
+python utilities/reingest_with_stella.py    # Reingest with Stella-400M
+```
+
 ### Excel Processing
 ```bash
 # Analyze Excel inventory files
@@ -80,12 +95,20 @@ python utilities/analyze_excel.py
 python utilities/extract_excel_images.py
 ```
 
-### Inventory Ingestion
+### Database Utilities
 ```bash
-# Ingest inventory data into ChromaDB
-python -c "from factory_automation.factory_rag.excel_ingestion import ExcelInventoryIngestion; \
-          ingestion = ExcelInventoryIngestion(); \
-          ingestion.ingest_inventory_folder('inventory')"
+# Show current inventory in ChromaDB
+python utilities/show_inventory.py
+
+# Compare embedding models
+python utilities/stella_comparison_demo.py
+```
+
+### Alternative Launchers (deprecated)
+```bash
+# These are kept for reference but use run_factory_automation.py instead
+python utilities/launch_dashboard.py        # Old dashboard launcher
+python utilities/launch_live_dashboard.py   # Old live dashboard
 ```
 
 ## 🔧 Configuration
