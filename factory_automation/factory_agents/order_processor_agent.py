@@ -2,7 +2,7 @@
 
 import json
 import logging
-import tempfile
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -91,6 +91,8 @@ class OrderProcessorAgent:
             # Step 2: Process attachments
             if attachments:
                 await self._process_attachments(extracted_order, attachments)
+                # Recalculate confidence after processing attachments
+                extracted_order.extraction_confidence = self._recalculate_confidence_with_attachments(extracted_order)
 
             # Step 3: Search inventory for each item
             inventory_matches = await self._search_inventory_for_items(extracted_order)
@@ -328,25 +330,39 @@ class OrderProcessorAgent:
 
         for att in attachments:
             filename = att.get("filename", "")
-            content = att.get("content")  # Base64 or bytes
+            filepath = att.get("filepath", "")  # Get file path instead of content
+            
+            # Skip if no filepath provided
+            if not filepath:
+                logger.warning(f"No filepath provided for attachment: {filename}")
+                # Add empty attachment record
+                order.attachments.append(
+                    Attachment(
+                        filename=filename,
+                        type=AttachmentType.OTHER,
+                        mime_type=att.get("mime_type"),
+                        extracted_data={"error": "No filepath provided"},
+                    )
+                )
+                continue
 
-            # Determine attachment type
-            if filename.endswith((".xlsx", ".xls")):
-                att_type = AttachmentType.EXCEL
-                # Process Excel file
-                extracted_data = await self._process_excel_attachment(content, filename)
+            # Determine attachment type and process
+            if filename.endswith((".xlsx", ".xls", ".csv")):
+                att_type = AttachmentType.EXCEL  # Treat CSV as Excel type
+                # Process Excel/CSV file
+                extracted_data = await self._process_excel_attachment(filepath, filename)
             elif filename.endswith((".jpg", ".jpeg", ".png", ".gif")):
                 att_type = AttachmentType.IMAGE
                 # Process image with Qwen2.5VL
                 extracted_data = await self._process_image_attachment(
-                    content, filename, order.order_id, order.customer.company_name
+                    filepath, filename, order.order_id, order.customer.company_name
                 )
             elif filename.endswith(".pdf"):
                 att_type = AttachmentType.PDF
-                extracted_data = await self._process_pdf_attachment(content, filename)
+                extracted_data = await self._process_pdf_attachment(filepath, filename)
             elif filename.endswith((".doc", ".docx")):
                 att_type = AttachmentType.WORD
-                extracted_data = await self._process_word_attachment(content, filename)
+                extracted_data = await self._process_word_attachment(filepath, filename)
             else:
                 att_type = AttachmentType.OTHER
                 extracted_data = None
@@ -362,21 +378,24 @@ class OrderProcessorAgent:
             )
 
     async def _process_image_attachment(
-        self, content: bytes, filename: str, order_id: str, customer_name: str
+        self, filepath: str, filename: str, order_id: str, customer_name: str
     ) -> Dict[str, Any]:
         """Process image attachment using Qwen2.5VL and store in ChromaDB"""
 
         try:
-            # Save image temporarily
-            with tempfile.NamedTemporaryFile(
-                suffix=Path(filename).suffix, delete=False
-            ) as tmp_file:
-                tmp_file.write(content)
-                tmp_path = tmp_file.name
+            # Check if filepath is valid
+            if not filepath:
+                logger.error(f"Empty filepath for image attachment: {filename}")
+                return {"error": "Empty filepath", "filename": filename}
+            
+            # Directly use the file path
+            if not os.path.exists(filepath):
+                logger.error(f"Image attachment file not found: {filepath} (filename: {filename})")
+                raise FileNotFoundError(f"Attachment file not found: {filepath}")
 
             # Process and store in ChromaDB
             result = await self.image_processor.process_and_store_image(
-                image_path=tmp_path,
+                image_path=filepath,
                 order_id=order_id,
                 customer_name=customer_name,
                 additional_metadata={
@@ -385,9 +404,6 @@ class OrderProcessorAgent:
                 },
             )
 
-            # Clean up temp file
-            Path(tmp_path).unlink()
-
             return result
 
         except Exception as e:
@@ -395,18 +411,51 @@ class OrderProcessorAgent:
             return {"error": str(e)}
 
     async def _process_excel_attachment(
-        self, content: bytes, filename: str
+        self, filepath: str, filename: str
     ) -> Dict[str, Any]:
         """Process Excel attachment to extract order data"""
 
         try:
-            # Save temporarily and read with pandas
-            with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp_file:
-                tmp_file.write(content)
-                tmp_path = tmp_file.name
+            # Check if filepath is valid
+            if not filepath:
+                logger.error(f"Empty filepath for Excel attachment: {filename}")
+                return {"error": "Empty filepath", "filename": filename}
+            
+            # Directly use the file path
+            if not os.path.exists(filepath):
+                logger.error(f"Excel attachment file not found: {filepath} (filename: {filename})")
+                raise FileNotFoundError(f"Attachment file not found: {filepath}")
 
-            # Read Excel file
-            df = pd.read_excel(tmp_path)
+            # Read Excel file - try different engines based on file extension
+            file_ext = Path(filename).suffix.lower()
+            df = None
+            
+            try:
+                if file_ext == '.xlsx':
+                    # Use openpyxl for modern Excel files
+                    df = pd.read_excel(filepath, engine='openpyxl')
+                elif file_ext == '.xls':
+                    # Use xlrd for older Excel files
+                    df = pd.read_excel(filepath, engine='xlrd')
+                elif file_ext == '.csv':
+                    # Handle CSV files
+                    df = pd.read_csv(filepath)
+                else:
+                    # Try auto-detection
+                    df = pd.read_excel(filepath)
+            except Exception as e:
+                # Fallback attempts
+                logger.warning(f"Initial read failed: {e}. Trying alternative methods...")
+                try:
+                    # Try as CSV regardless of extension
+                    df = pd.read_csv(filepath)
+                except:
+                    try:
+                        # Force openpyxl
+                        df = pd.read_excel(filepath, engine='openpyxl')
+                    except:
+                        # Force xlrd as last resort
+                        df = pd.read_excel(filepath, engine='xlrd')
 
             # Extract relevant data
             extracted_data = {
@@ -416,9 +465,6 @@ class OrderProcessorAgent:
                 "data": df.to_dict(orient="records"),
             }
 
-            # Clean up
-            Path(tmp_path).unlink()
-
             return extracted_data
 
         except Exception as e:
@@ -426,18 +472,81 @@ class OrderProcessorAgent:
             return {"error": str(e)}
 
     async def _process_pdf_attachment(
-        self, content: bytes, filename: str
+        self, filepath: str, filename: str
     ) -> Dict[str, Any]:
-        """Process PDF attachment"""
-        # TODO: Implement PDF processing with OCR if needed
-        return {"filename": filename, "type": "pdf", "status": "not_implemented"}
+        """Process PDF attachment using pdfplumber"""
+        import pdfplumber
+        
+        try:
+            # Check if filepath is valid
+            if not filepath:
+                logger.error(f"Empty filepath for PDF attachment: {filename}")
+                return {"error": "Empty filepath", "filename": filename}
+            
+            # Directly use the file path
+            if not os.path.exists(filepath):
+                logger.error(f"PDF attachment file not found: {filepath} (filename: {filename})")
+                raise FileNotFoundError(f"Attachment file not found: {filepath}")
+            
+            # Extract text and tables from PDF
+            extracted_text = []
+            extracted_tables = []
+            
+            with pdfplumber.open(filepath) as pdf:
+                for page_num, page in enumerate(pdf.pages):
+                    # Extract text
+                    text = page.extract_text()
+                    if text:
+                        extracted_text.append(f"Page {page_num + 1}:\n{text}")
+                    
+                    # Extract tables
+                    tables = page.extract_tables()
+                    for table in tables:
+                        if table:
+                            extracted_tables.append({
+                                "page": page_num + 1,
+                                "data": table
+                            })
+            
+            return {
+                "filename": filename,
+                "type": "pdf",
+                "pages": len(pdf.pages) if 'pdf' in locals() else 0,
+                "text": "\n\n".join(extracted_text),
+                "tables": extracted_tables,
+                "status": "processed"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error processing PDF attachment: {e}")
+            return {"filename": filename, "type": "pdf", "error": str(e)}
 
     async def _process_word_attachment(
-        self, content: bytes, filename: str
+        self, filepath: str, filename: str
     ) -> Dict[str, Any]:
         """Process Word document attachment"""
-        # TODO: Implement Word document processing
-        return {"filename": filename, "type": "word", "status": "not_implemented"}
+        try:
+            # Check if filepath is valid
+            if not filepath:
+                logger.error(f"Empty filepath for Word attachment: {filename}")
+                return {"error": "Empty filepath", "filename": filename}
+            
+            # Directly use the file path
+            if not os.path.exists(filepath):
+                logger.error(f"Word attachment file not found: {filepath} (filename: {filename})")
+                raise FileNotFoundError(f"Attachment file not found: {filepath}")
+            
+            # TODO: Implement Word document processing (requires python-docx library)
+            # For now, just acknowledge the file exists
+            return {
+                "filename": filename,
+                "type": "word",
+                "filepath": filepath,
+                "status": "file_exists_not_processed"
+            }
+        except Exception as e:
+            logger.error(f"Error processing Word attachment: {e}")
+            return {"filename": filename, "type": "word", "error": str(e)}
 
     async def _search_inventory_for_items(
         self, order: ExtractedOrder
@@ -542,6 +651,27 @@ class OrderProcessorAgent:
 
         return confidence_scores
 
+    def _recalculate_confidence_with_attachments(self, order: ExtractedOrder) -> float:
+        """Recalculate confidence after processing attachments"""
+        confidence = order.extraction_confidence
+        
+        # Boost confidence if we have successfully processed attachments
+        if order.attachments:
+            processed_count = sum(1 for att in order.attachments 
+                                 if att.extracted_data and "error" not in att.extracted_data)
+            if processed_count > 0:
+                # Increase confidence by 10% for each successfully processed attachment
+                confidence = min(1.0, confidence + (0.1 * processed_count))
+                
+                # If we extracted items from Excel, boost confidence significantly
+                for att in order.attachments:
+                    if att.type == AttachmentType.EXCEL and att.extracted_data:
+                        if "data" in att.extracted_data and att.extracted_data["data"]:
+                            confidence = min(1.0, confidence + 0.2)
+                            break
+        
+        return confidence
+    
     def _calculate_extraction_confidence(self, extracted_data: Dict[str, Any]) -> float:
         """Calculate confidence based on extraction completeness"""
 

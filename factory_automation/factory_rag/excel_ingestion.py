@@ -20,7 +20,7 @@ class ExcelInventoryIngestion:
 
     # Column mappings to handle variations across Excel files
     COLUMN_MAPPINGS = {
-        "code": ["TRIM CODE", "TRIMCODE", "CODE", "ITEM CODE", "SL.NO", "TAG CODE"],
+        "code": ["TRIM CODE", "TRIMCODE", "CODE", "ITEM CODE", "SL.NO", "TAG CODE", "S.NO"],
         "name": [
             "TRIM NAME",
             "TAG NAME",
@@ -39,8 +39,9 @@ class ExcelInventoryIngestion:
             "IMAGE",
             "IMAGES",
             "THREAD IMAGE",
+            "TAGIMAGE",
         ],
-        "serial": ["S NO", "S.NO", "SL .NO", "SR NO", "SERIAL", "SL.NO"],
+        "serial": ["S NO", "S.NO", "SL .NO", "SR NO", "SERIAL", "SL.NO", "S.NO"],
         "brand": ["BRAND", "TRIMS BRAND", "TAG BRAND"],
     }
 

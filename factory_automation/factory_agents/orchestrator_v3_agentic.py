@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from agents import Agent, Runner, function_tool, trace
 
@@ -308,16 +308,17 @@ Think step by step and use tools appropriately to handle each email completely."
 
         # Track processed emails to prevent duplicates
         self._processed_emails = set()
+        self._current_attachments = []  # Store current email attachments
 
         # Complete order processing tool with full workflow
         @function_tool(
             name_override="process_complete_order",
-            description_override="Process complete order with attachments, ChromaDB search, and human review workflow",
+            description_override="Process complete order with attachments, ChromaDB search, and human review workflow. Attachments are automatically retrieved from context.",
         )
         async def process_complete_order(
-            email_subject: str, email_body: str, sender_email: str
+            email_subject: str, email_body: str, sender_email: str, attachments: Optional[str] = None
         ) -> str:
-            """Process complete order using OrderProcessorAgent"""
+            """Process complete order using OrderProcessorAgent with attachment support"""
 
             # Create a unique key for this email
             email_key = f"{sender_email}:{email_subject}"
@@ -338,13 +339,34 @@ Think step by step and use tools appropriately to handle each email completely."
             self._processed_emails.add(email_key)
 
             try:
+                # Always use attachments from context (they contain file paths)
+                attachment_list = []
+                if hasattr(self, '_current_attachments') and self._current_attachments:
+                    attachment_list = self._current_attachments
+                    logger.info(f"Using {len(attachment_list)} attachments from context")
+                    for att in attachment_list:
+                        logger.debug(f"  - {att.get('filename')}: {att.get('filepath')}")
+                else:
+                    logger.info("No attachments in context")
+                
+                # If attachments were explicitly passed (shouldn't happen with new design)
+                if attachments and not attachment_list:
+                    logger.warning("Attachments passed as parameter (legacy behavior)")
+                    try:
+                        if isinstance(attachments, str):
+                            attachment_list = json.loads(attachments)
+                        else:
+                            attachment_list = attachments
+                    except json.JSONDecodeError:
+                        logger.error(f"Failed to parse attachments JSON: {attachments}")
+                
                 # Use the OrderProcessorAgent for comprehensive processing
                 result = await self.order_processor.process_order_email(
                     email_subject=email_subject,
                     email_body=email_body,
                     email_date=datetime.now(),
                     sender_email=sender_email,
-                    attachments=[],  # Empty for now, can be extended later
+                    attachments=attachment_list,  # Pass parsed attachments
                 )
 
                 # Format response
@@ -397,6 +419,110 @@ Think step by step and use tools appropriately to handle each email completely."
                 return json.dumps({"error": str(e), "status": "failed"})
 
         tools.append(process_complete_order)
+
+        # Extract data from Excel attachment
+        @function_tool(
+            name_override="extract_excel_data",
+            description_override="Extract order data from Excel file attachment"
+        )
+        async def extract_excel_data(filename: str, content: str) -> str:
+            """Extract and parse data from Excel attachment"""
+            try:
+                import base64
+                import pandas as pd
+                import tempfile
+                from pathlib import Path
+                
+                # Decode base64 content if needed
+                if isinstance(content, str):
+                    content_bytes = base64.b64decode(content)
+                else:
+                    content_bytes = content
+                
+                # Save temporarily and read with pandas
+                with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp_file:
+                    tmp_file.write(content_bytes)
+                    tmp_path = tmp_file.name
+                
+                # Read Excel file
+                df = pd.read_excel(tmp_path)
+                
+                # Extract relevant data
+                extracted_data = {
+                    "filename": filename,
+                    "rows": len(df),
+                    "columns": list(df.columns),
+                    "sample_data": df.head(10).to_dict(orient="records"),
+                    "summary": f"Excel file with {len(df)} rows and {len(df.columns)} columns"
+                }
+                
+                # Clean up
+                Path(tmp_path).unlink()
+                
+                logger.info(f"Extracted data from Excel: {filename}")
+                return json.dumps(extracted_data, indent=2)
+                
+            except Exception as e:
+                logger.error(f"Error extracting Excel data: {e}")
+                return json.dumps({"error": str(e), "filename": filename})
+        
+        tools.append(extract_excel_data)
+
+        # Extract data from PDF attachment
+        @function_tool(
+            name_override="extract_pdf_data",
+            description_override="Extract text content from PDF attachment"
+        )
+        async def extract_pdf_data(filename: str, content: str) -> str:
+            """Extract text from PDF attachment"""
+            try:
+                import base64
+                import PyPDF2
+                import tempfile
+                from pathlib import Path
+                
+                # Decode base64 content if needed
+                if isinstance(content, str):
+                    content_bytes = base64.b64decode(content)
+                else:
+                    content_bytes = content
+                
+                # Save temporarily
+                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_file:
+                    tmp_file.write(content_bytes)
+                    tmp_path = tmp_file.name
+                
+                # Read PDF
+                with open(tmp_path, 'rb') as pdf_file:
+                    pdf_reader = PyPDF2.PdfReader(pdf_file)
+                    num_pages = len(pdf_reader.pages)
+                    
+                    # Extract text from all pages
+                    extracted_text = []
+                    for page_num in range(min(num_pages, 10)):  # Limit to first 10 pages
+                        page = pdf_reader.pages[page_num]
+                        text = page.extract_text()
+                        if text:
+                            extracted_text.append(f"Page {page_num + 1}:\n{text}")
+                
+                # Clean up
+                Path(tmp_path).unlink()
+                
+                result = {
+                    "filename": filename,
+                    "pages": num_pages,
+                    "extracted_text": "\n\n".join(extracted_text),
+                    "summary": f"PDF with {num_pages} pages"
+                }
+                
+                logger.info(f"Extracted text from PDF: {filename}")
+                return json.dumps(result, indent=2)
+                
+            except Exception as e:
+                logger.error(f"Error extracting PDF data: {e}")
+                return json.dumps({"error": str(e), "filename": filename})
+        
+        tools.append(extract_pdf_data)
 
         # Process image attachments tool
         @function_tool(
@@ -643,29 +769,59 @@ Think step by step and use tools appropriately to handle each email completely."
         # Use trace context for monitoring
         with trace(trace_name):
             try:
-                # Construct prompt for autonomous processing
+                # Prepare attachments if present
+                attachments_data = []
+                attachment_summary = []
+                if email_data.get('attachments'):
+                    logger.info(f"Processing {len(email_data['attachments'])} attachments")
+                    for attachment in email_data['attachments']:
+                        # Log attachment details
+                        logger.debug(f"Attachment: {attachment}")
+                        
+                        # Store attachment data with file paths
+                        att_data = {
+                            'filename': attachment.get('filename', 'unknown'),
+                            'filepath': attachment.get('filepath', ''),  # File path instead of content
+                            'mime_type': attachment.get('mime_type', 'application/octet-stream')
+                        }
+                        attachments_data.append(att_data)
+                        
+                        # Log if filepath is missing
+                        if not att_data['filepath']:
+                            logger.warning(f"Missing filepath for attachment: {att_data['filename']}")
+                        
+                        # Create summary for prompt
+                        attachment_summary.append(f"{attachment.get('filename', 'unknown')} ({attachment.get('mime_type', 'unknown')})")
+                    
+                    logger.info(f"Prepared {len(attachments_data)} attachments for processing")
+                
+                # Store attachments in context for tools to access
+                self._current_attachments = attachments_data
+                logger.info(f"Stored {len(attachments_data)} attachments in context")
+                
+                # Construct prompt for autonomous processing (without full attachment content)
+                # Don't truncate the email body - it's crucial for extraction
+                email_body = email_data.get('body', 'No body')
                 prompt = f"""
 Process this email ONCE using your available tools:
 
 From: {email_data.get('from', 'Unknown')}
 Subject: {email_data.get('subject', 'No subject')}
-Body: {email_data.get('body', 'No body')}
-Attachments: {len(email_data.get('attachments', []))} files
+Body: {email_body}
+Attachments: {len(attachments_data)} files - {', '.join(attachment_summary) if attachment_summary else 'None'}
 
-IMPORTANT: Only call process_complete_order ONCE per email. Do not process the same email multiple times.
+IMPORTANT: 
+1. Call process_complete_order with the email details
+2. The attachments are already available in the context - the tool will access them automatically
+3. You don't need to pass attachments explicitly - they're stored in context
 
-Steps to follow:
-1. If this is an order email, call process_complete_order ONCE with the email details
-2. Based on the result, provide a summary of what happened
-3. Do NOT call process_complete_order again for the same email
+Available tools will handle:
+- Extracting data from attachments
+- Processing Excel, PDF, and images
+- Searching inventory with complete context
+- Calculating confidence based on all information
 
-The process_complete_order tool will handle all the workflow including:
-- Extracting order details
-- Searching inventory
-- Creating human review if needed
-- All decision making
-
-Just call it once and report the results.
+Call process_complete_order and report the results.
 """
 
                 # Start monitoring this trace

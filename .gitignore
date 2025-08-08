@@ -87,3 +87,4 @@ temp/
 
 # Claude settings
 .claude/settings.local.json
+extracted_images/

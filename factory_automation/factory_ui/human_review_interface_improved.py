@@ -408,6 +408,11 @@ class HumanReviewInterface:
             if review.search_results and isinstance(review.search_results, list):
                 for result in review.search_results[:5]:  # Top 5 results
                     if isinstance(result, dict):
+                        # Check if result has image data
+                        has_image = False
+                        if isinstance(result.get("metadata"), dict):
+                            has_image = result["metadata"].get("has_image", False)
+                        
                         search_results_formatted.append(
                             {
                                 "name": result.get(
@@ -420,6 +425,7 @@ class HumanReviewInterface:
                                 "similarity": f"{result.get('similarity_score', result.get('confidence', 0)) * 100:.1f}%",
                                 "price": result.get("price", 0),
                                 "stock": result.get("stock", 0),
+                                "has_image": "✓" if has_image else "✗",
                             }
                         )
         except Exception as e:
