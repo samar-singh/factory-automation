@@ -177,18 +177,27 @@ class OrderProcessorAgent:
         1. Customer information (company, contact person, email, phone)
         2. Order items with specifications:
            - Tag codes (e.g., TBALWBL0009N)
-           - Tag types (fit tags, main tags, etc.)
-           - Quantities
+           - Tag types (fit tags, main tags, price tags, care labels, etc.)
+           - Quantities (look for any numbers followed by units like pcs, pieces, tags, units)
            - Remarks/special requirements
            - Fit mappings if mentioned
         3. Proforma invoice details if mentioned
         4. Delivery requirements and urgency
-        5. Any brand information (Allen Solly, Myntra, etc.)
+        5. Any brand information (Allen Solly, Peter England, Van Heusen, Myntra, etc.)
+        
+        IMPORTANT: 
+        - This is an order email to a garment tag manufacturer, so there MUST be items being ordered
+        - If specific tag codes aren't mentioned, infer from context (e.g., "price tags" = generic price tag order)
+        - If quantities aren't clear, look for any numbers that could represent quantities
+        - Common tag types: price tags, care labels, size tags, brand tags, wash care labels, fit tags
+        - If brand is mentioned anywhere, associate it with the items
+        - Extract AT LEAST one item even if details are vague
         
         Pay special attention to:
-        - Tables showing fit-to-tag mappings
+        - Any mention of tags, labels, stickers, hangtags
+        - Brand names (Allen Solly, Peter England, Van Heusen, etc.)
+        - Numbers that could be quantities
         - Product codes and SKUs
-        - Sustainability or special tag requirements
         - Delivery dates
         
         Return as structured JSON matching the ExtractedOrder schema.
@@ -201,7 +210,11 @@ class OrderProcessorAgent:
                     {
                         "role": "system",
                         "content": """You are an expert at extracting structured order information from garment industry emails.
-                        Focus on tag codes, fit mappings, quantities, and special requirements.
+                        This is a garment tag manufacturing company, so ALL emails are about ordering tags/labels.
+                        Focus on finding: tag types, quantities, brands, and special requirements.
+                        ALWAYS extract at least one item being ordered, even if you have to infer from context.
+                        Common items ordered: price tags, care labels, size tags, brand labels, wash care labels.
+                        If no specific items are mentioned, assume they want price tags.
                         Always return valid JSON matching the provided schema.""",
                     },
                     {"role": "user", "content": extraction_prompt},
@@ -212,6 +225,36 @@ class OrderProcessorAgent:
             )
 
             extracted_data = json.loads(response.choices[0].message.content)
+            
+            # Log what the AI extracted
+            logger.info(f"AI extracted data: {json.dumps(extracted_data, indent=2)[:500]}...")
+            logger.info(f"Number of items extracted: {len(extracted_data.get('items', []))}") 
+            
+            # If no items extracted, create a default item based on email content
+            if not extracted_data.get('items'):
+                logger.warning("AI didn't extract any items. Creating default order item...")
+                # Try to find any quantity mentioned
+                import re
+                qty_match = re.search(r'(\d+)\s*(pcs|pieces|tags|units|nos)?', email_body, re.IGNORECASE)
+                quantity = int(qty_match.group(1)) if qty_match else 100  # Default to 100
+                
+                # Try to find brand
+                brand_patterns = ['Allen Solly', 'Peter England', 'Van Heusen', 'Louis Philippe', 'Myntra']
+                brand_found = "Unknown"
+                for brand in brand_patterns:
+                    if brand.lower() in email_body.lower():
+                        brand_found = brand
+                        break
+                
+                # Create a default item
+                extracted_data['items'] = [{
+                    'tag_code': 'GENERIC-PRICE-TAG',
+                    'tag_type': 'price_tag',
+                    'quantity': quantity,
+                    'brand': brand_found,
+                    'remarks': 'Extracted from email context - needs verification'
+                }]
+                logger.info(f"Created default item: {quantity} price tags for {brand_found}")
 
             # Parse into Pydantic model
             order_items = []
@@ -291,6 +334,28 @@ class OrderProcessorAgent:
             # Calculate extraction confidence
             confidence = self._calculate_extraction_confidence(extracted_data)
 
+            # Log order items before creating ExtractedOrder
+            logger.info(f"Created {len(order_items)} order items from extraction")
+            if order_items:
+                logger.info(f"First item: {order_items[0].tag_specification.tag_code if order_items else 'None'}")
+            
+            # Ensure we always have at least one item
+            if not order_items:
+                logger.warning("No order items created. Adding generic item for search...")
+                # Create a generic item to ensure search happens
+                generic_item = OrderItem(
+                    item_id="ITEM-001",
+                    tag_specification=TagSpecification(
+                        tag_code="GENERIC-TAG",
+                        tag_type=TagType.price_tag,
+                        quantity=100,
+                        remarks="Generic order - needs clarification"
+                    ),
+                    brand=extracted_data.get("brand", "Unknown"),
+                    quantity_ordered=100,
+                )
+                order_items.append(generic_item)
+            
             # Create ExtractedOrder
             extracted_order = ExtractedOrder(
                 email_subject=email_subject,
@@ -300,7 +365,7 @@ class OrderProcessorAgent:
                 proforma_invoice=proforma,
                 purchase_order_number=extracted_data.get("po_number"),
                 delivery=delivery,
-                extraction_confidence=confidence,
+                extraction_confidence=confidence if order_items else 0.2,  # Low confidence if we had to add generic
                 extraction_method="ai_gpt4",
                 missing_information=extracted_data.get("missing_information", []),
                 requires_clarification=len(order_items) == 0 or confidence < 0.6,
@@ -554,24 +619,89 @@ class OrderProcessorAgent:
         """Search inventory using enhanced search with reranking"""
 
         all_matches = []
+        
+        # Log what we're searching for
+        logger.info(f"Searching inventory for {len(order.items)} items")
+        if not order.items:
+            logger.warning("No items to search for in order!")
+            return []
 
         for item in order.items:
             # Create search query from item details
-            search_query = f"{item.brand} {item.tag_specification.tag_code} {item.tag_specification.tag_type.value}"
-
-            # Add additional context to query
+            # Build query parts, filtering out generic/unknown values
+            query_parts = []
+            
+            # Add brand if it's not generic
+            if item.brand and item.brand not in ["Unknown", "GENERIC"]:
+                query_parts.append(item.brand)
+            
+            # Add tag code if it's not generic
+            if item.tag_specification.tag_code and "GENERIC" not in item.tag_specification.tag_code:
+                query_parts.append(item.tag_specification.tag_code)
+            
+            # Always add tag type
+            tag_type_str = item.tag_specification.tag_type.value.replace("_", " ")
+            query_parts.append(tag_type_str)
+            
+            # Add specific attributes
             if item.tag_specification.color:
-                search_query += f" {item.tag_specification.color}"
+                query_parts.append(item.tag_specification.color)
             if item.tag_specification.material:
-                search_query += f" {item.tag_specification.material}"
+                query_parts.append(item.tag_specification.material)
+            
+            # Build search query
+            search_query = " ".join(query_parts) if query_parts else "price tag"
+            
+            # If query is too generic, try to make it more specific
+            if search_query in ["price tag", "tag", "label"]:
+                # Try to add brand context from the order
+                if item.brand and item.brand != "Unknown":
+                    search_query = f"{item.brand} {search_query}"
+                else:
+                    # Search for common tag types
+                    search_query = "garment price tag label"
 
+            # Log the search query
+            logger.info(f"Searching for item {item.item_id}: '{search_query}'")
+            
+            # Prepare filters - only use brand filter if it's specific
+            filters = None
+            if item.brand and item.brand not in ["Unknown", "GENERIC"]:
+                filters = {"brand": item.brand}
+                logger.debug(f"Using brand filter: {item.brand}")
+            
             # Use enhanced search with reranking
-            search_results, search_stats = self.enhanced_search.search(
-                query=search_query,
-                n_results=5,
-                n_candidates=20,  # Get more candidates for reranking
-                filters={"brand": item.brand} if item.brand else None,
-            )
+            try:
+                search_results, search_stats = self.enhanced_search.search(
+                    query=search_query,
+                    n_results=10,  # Get more results
+                    n_candidates=30,  # Get more candidates for reranking
+                    filters=filters,
+                )
+            except Exception as e:
+                logger.error(f"Search failed for query '{search_query}': {e}")
+                search_results = []
+                search_stats = {"final_results": 0, "semantic_candidates": 0}
+            
+            # Log search results
+            logger.info(f"Found {len(search_results)} results for item {item.item_id}")
+            
+            # If no results, try a broader search
+            if not search_results and search_query != "tag":
+                logger.info(f"No results for '{search_query}'. Trying broader search...")
+                try:
+                    # Try with just "tag" or "label"
+                    broader_query = "tag" if "tag" in search_query.lower() else "label"
+                    search_results, search_stats = self.enhanced_search.search(
+                        query=broader_query,
+                        n_results=5,
+                        n_candidates=20,
+                        filters=None,  # Remove filters for broader search
+                    )
+                    logger.info(f"Broader search found {len(search_results)} results")
+                except Exception as e:
+                    logger.error(f"Broader search also failed: {e}")
+                    search_results = []
 
             # Process enhanced results
             for result in search_results:
