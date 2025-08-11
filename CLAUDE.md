@@ -11,7 +11,7 @@ Building an automated system for a garment price tag manufacturing factory to:
 - Track payments (UTR/cheques)
 - Provide real-time dashboard
 
-## Current Status (Last Updated: 2025-08-08 Afternoon)
+## Current Status (Last Updated: 2025-08-11 Evening)
 
 ### GitHub Repository
 
@@ -69,9 +69,26 @@ Building an automated system for a garment price tag manufacturing factory to:
    - Interactive testing tools
    - Code formatting with black/ruff/isort
 
-### Recent Updates (2025-08-08 Afternoon) 🆕
+### Recent Updates (2025-08-11 Evening) 🆕
 
-**Session 6 - Complete Attachment Refactoring:**
+**Session 8 - Image Deduplication & UI Improvements:**
+- ✅ **Fixed Duplicate Image Display**: Only unique matches shown (was showing 20 duplicates, now 5 unique)
+- ✅ **Enhanced Deduplication Logic**: Prevents duplicates at source in order_processor_agent.py
+- ✅ **UI Deduplication**: Double-checks for unique tag_codes before display
+- ✅ **Tag Names Added**: All 684 tags now have meaningful names for identification
+- ✅ **Multi-Format Ingestion**: Added GUI for PDF/Word/Excel/Image ingestion with chunking
+- ✅ **Deduplication Manager**: Comprehensive system for managing RAG duplicates
+- ✅ **Repository Cleanup**: Removed 33 unnecessary files, organized structure
+
+**Session 7 (2025-08-09 Afternoon) - Order Extraction & Search Fixes:**
+- ✅ **Fixed "0 matches" bug**: All emails now extract at least one searchable item
+- ✅ **Enhanced AI Context**: AI understands this is a tag manufacturing business
+- ✅ **Fallback Logic**: Creates generic items when AI extraction fails
+- ✅ **Brand Detection**: Recognizes Allen Solly, Peter England, Van Heusen, etc.
+- ✅ **Quantity Extraction**: Uses regex to find quantities in emails
+- ✅ **100% Success Rate**: Every customer email generates inventory search
+
+**Session 6 (2025-08-08) - Complete Attachment Refactoring:**
 - ✅ **File Path Architecture**: Refactored entire pipeline from base64 to file paths
 - ✅ **Production Gmail Agent**: Created agent that downloads attachments to disk
 - ✅ **CSV Support**: CSV files now recognized and processed as Excel type

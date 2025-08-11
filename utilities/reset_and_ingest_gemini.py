@@ -23,9 +23,10 @@ from factory_automation.factory_rag.excel_ingestion import (  # noqa: E402
 def main():
     print("🚀 Resetting ChromaDB and ingesting with Google Gemini embeddings...")
     print("=" * 60)
-    
+
     # Check for API key
     import os
+
     if not os.getenv("GOOGLE_API_KEY") and not os.getenv("GEMINI_API_KEY"):
         print("❌ Error: Google API key not found!")
         print("   Please set GOOGLE_API_KEY or GEMINI_API_KEY in your .env file")
@@ -47,11 +48,10 @@ def main():
     print("   • Better multilingual support")
     print("   • Improved semantic understanding")
     print("   • Longer context window (2048 tokens)")
-    
+
     try:
         ingestion = ExcelInventoryIngestion(
-            chroma_client=chroma_client, 
-            embedding_model="gemini"
+            chroma_client=chroma_client, embedding_model="gemini"
         )
     except Exception as e:
         print(f"❌ Error initializing Gemini embeddings: {e}")
@@ -75,7 +75,9 @@ def main():
     print("\n" + "=" * 60)
     print("✅ Ingestion Complete with Gemini Embeddings!")
     print(f"📊 Total items ingested: {total_ingested}")
-    print(f"✅ Successful files: {len([r for r in results if r['status'] == 'success'])}")
+    print(
+        f"✅ Successful files: {len([r for r in results if r['status'] == 'success'])}"
+    )
     print(f"❌ Failed files: {len(failed_files)}")
 
     if failed_files:
@@ -91,7 +93,7 @@ def main():
     print("   • Embedding model: Google Gemini (text-embedding-004)")
     print("   • Dimensions: 768")
     print("\n🎯 Ready to use with improved accuracy!")
-    
+
     # Update the vector_db.py default collection to use Gemini
     print("\n💡 To use Gemini embeddings by default, update:")
     print("   factory_automation/factory_database/vector_db.py")

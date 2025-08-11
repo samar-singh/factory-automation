@@ -37,14 +37,19 @@ class EnhancedRAGSearch:
         """
         # Load from config if not specified
         from ..factory_config.settings import settings
+
         rag_config = settings.get_rag_config()
-        
+
         self.chromadb_client = chromadb_client
         self.embeddings_manager = embeddings_manager or EmbeddingsManager("stella-400m")
         self.enable_reranking = enable_reranking
         self.enable_hybrid_search = enable_hybrid_search
-        self.enable_image_search = enable_image_search if enable_image_search is not None else rag_config.get("enable_image_search", True)
-        
+        self.enable_image_search = (
+            enable_image_search
+            if enable_image_search is not None
+            else rag_config.get("enable_image_search", True)
+        )
+
         # Initialize image storage manager if image search is enabled
         self.image_storage = ImageStorageManager() if self.enable_image_search else None
 
@@ -183,7 +188,7 @@ class EnhancedRAGSearch:
 
         # 6. Enhance results with confidence levels
         final_results = self._add_confidence_levels(final_results)
-        
+
         # 7. Enrich with full image data if enabled
         if self.enable_image_search and self.image_storage:
             final_results = self._enrich_with_images(final_results)
@@ -337,32 +342,34 @@ class EnhancedRAGSearch:
             result["confidence_percentage"] = confidence_pct
 
         return results
-    
-    def _enrich_with_images(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+
+    def _enrich_with_images(
+        self, results: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
         """Enrich search results with full image data from image storage
-        
+
         Args:
             results: Search results to enrich
-            
+
         Returns:
             Results with full image data added
         """
         for result in results:
             metadata = result.get("metadata", {})
-            
+
             # Check if result has an image reference
             if metadata.get("has_image") and metadata.get("image_id"):
                 image_id = metadata["image_id"]
-                
+
                 # Retrieve full image from storage
                 image_data = self.image_storage.get_image(image_id)
-                
+
                 if image_data:
                     # Add full image data to result
                     result["image_data"] = {
                         "base64": image_data["base64"],
                         "has_clip_embedding": metadata.get("has_clip_embedding", False),
-                        "image_metadata": image_data["metadata"]
+                        "image_metadata": image_data["metadata"],
                     }
                     logger.debug(f"Enriched result with image {image_id}")
                 else:
@@ -370,100 +377,101 @@ class EnhancedRAGSearch:
                     result["image_data"] = None
             else:
                 result["image_data"] = None
-        
+
         return results
-    
+
     def search_by_image(
         self,
         image_embedding: List[float],
         n_results: int = 10,
         filters: Optional[Dict[str, Any]] = None,
-        combine_with_text: Optional[str] = None
+        combine_with_text: Optional[str] = None,
     ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """Search using image embedding (CLIP)
-        
+
         Args:
             image_embedding: CLIP embedding of query image
             n_results: Number of results to return
             filters: Optional metadata filters
             combine_with_text: Optional text query to combine with image search
-            
+
         Returns:
             Tuple of (results, search_stats)
         """
         search_stats = {
             "search_type": "image" if not combine_with_text else "multimodal",
             "image_candidates": 0,
-            "final_results": 0
+            "final_results": 0,
         }
-        
+
         # Search image collection with embedding
         image_results = self.image_storage.search_by_embedding(
             query_embedding=image_embedding,
             n_results=n_results * 2,  # Get more candidates
-            where=filters
+            where=filters,
         )
         search_stats["image_candidates"] = len(image_results)
-        
+
         # If text query provided, also do text search and merge
         if combine_with_text:
             text_results, text_stats = self.search(
-                query=combine_with_text,
-                n_results=n_results,
-                filters=filters
+                query=combine_with_text, n_results=n_results, filters=filters
             )
-            
+
             # Merge image and text results
             # Create a mapping of results by item
             merged_map = {}
-            
+
             # Add image results
             for img_result in image_results:
                 key = img_result.get("metadata", {}).get("item_code", img_result["id"])
                 merged_map[key] = {
                     **img_result,
                     "image_similarity": img_result.get("similarity", 0),
-                    "combined_score": img_result.get("similarity", 0) * 0.5  # Initial weight
+                    "combined_score": img_result.get("similarity", 0)
+                    * 0.5,  # Initial weight
                 }
-            
+
             # Add/merge text results
             for text_result in text_results:
-                key = text_result.get("metadata", {}).get("item_code", text_result.get("id"))
+                key = text_result.get("metadata", {}).get(
+                    "item_code", text_result.get("id")
+                )
                 if key in merged_map:
                     # Combine scores
                     merged_map[key]["text_score"] = text_result.get("score", 0)
                     merged_map[key]["combined_score"] = (
-                        merged_map[key]["image_similarity"] * 0.5 +
-                        text_result.get("score", 0) * 0.5
+                        merged_map[key]["image_similarity"] * 0.5
+                        + text_result.get("score", 0) * 0.5
                     )
                     merged_map[key]["text_result"] = text_result
                 else:
                     merged_map[key] = {
                         **text_result,
                         "text_score": text_result.get("score", 0),
-                        "combined_score": text_result.get("score", 0) * 0.5
+                        "combined_score": text_result.get("score", 0) * 0.5,
                     }
-            
+
             # Sort by combined score and take top N
             final_results = sorted(
                 merged_map.values(),
                 key=lambda x: x.get("combined_score", 0),
-                reverse=True
+                reverse=True,
             )[:n_results]
-            
+
             search_stats["text_candidates"] = text_stats.get("final_results", 0)
         else:
             # Just return image results
             final_results = image_results[:n_results]
-        
+
         # Enrich with full images
         final_results = self._enrich_with_images(final_results)
-        
+
         # Add confidence levels
         final_results = self._add_confidence_levels(final_results)
-        
+
         search_stats["final_results"] = len(final_results)
-        
+
         return final_results, search_stats
 
     def explain_search_result(

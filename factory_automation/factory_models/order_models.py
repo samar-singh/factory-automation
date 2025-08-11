@@ -151,6 +151,7 @@ class OrderItem(BaseModel):
     quantity_confirmed: Optional[int] = None
     inventory_match_score: Optional[float] = None  # ChromaDB match score
     matched_inventory_items: List[Dict[str, Any]] = []  # ChromaDB results
+    best_image_match: Optional[Dict[str, Any]] = None  # Best visual match
     approval_status: Literal["pending", "approved", "rejected", "review_required"] = (
         "pending"
     )
@@ -247,6 +248,7 @@ class OrderProcessingResult(BaseModel):
 
     order: ExtractedOrder
     inventory_matches: List[Dict[str, Any]]  # ChromaDB search results
+    image_matches: List[Dict[str, Any]] = []  # Visual similarity matches
     confidence_scores: Dict[str, float]  # Item-wise confidence scores
     recommended_action: Literal["auto_approve", "human_review", "request_clarification"]
     inventory_updates: List[InventoryUpdate] = []

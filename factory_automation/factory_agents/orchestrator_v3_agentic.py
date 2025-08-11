@@ -309,6 +309,7 @@ Think step by step and use tools appropriately to handle each email completely."
         # Track processed emails to prevent duplicates
         self._processed_emails = set()
         self._current_attachments = []  # Store current email attachments
+        self._last_order_result = None  # Store the last order processing result
 
         # Complete order processing tool with full workflow
         @function_tool(
@@ -316,7 +317,10 @@ Think step by step and use tools appropriately to handle each email completely."
             description_override="Process complete order with attachments, ChromaDB search, and human review workflow. Attachments are automatically retrieved from context.",
         )
         async def process_complete_order(
-            email_subject: str, email_body: str, sender_email: str, attachments: Optional[str] = None
+            email_subject: str,
+            email_body: str,
+            sender_email: str,
+            attachments: Optional[str] = None,
         ) -> str:
             """Process complete order using OrderProcessorAgent with attachment support"""
 
@@ -341,14 +345,18 @@ Think step by step and use tools appropriately to handle each email completely."
             try:
                 # Always use attachments from context (they contain file paths)
                 attachment_list = []
-                if hasattr(self, '_current_attachments') and self._current_attachments:
+                if hasattr(self, "_current_attachments") and self._current_attachments:
                     attachment_list = self._current_attachments
-                    logger.info(f"Using {len(attachment_list)} attachments from context")
+                    logger.info(
+                        f"Using {len(attachment_list)} attachments from context"
+                    )
                     for att in attachment_list:
-                        logger.debug(f"  - {att.get('filename')}: {att.get('filepath')}")
+                        logger.debug(
+                            f"  - {att.get('filename')}: {att.get('filepath')}"
+                        )
                 else:
                     logger.info("No attachments in context")
-                
+
                 # If attachments were explicitly passed (shouldn't happen with new design)
                 if attachments and not attachment_list:
                     logger.warning("Attachments passed as parameter (legacy behavior)")
@@ -359,7 +367,7 @@ Think step by step and use tools appropriately to handle each email completely."
                             attachment_list = attachments
                     except json.JSONDecodeError:
                         logger.error(f"Failed to parse attachments JSON: {attachments}")
-                
+
                 # Use the OrderProcessorAgent for comprehensive processing
                 result = await self.order_processor.process_order_email(
                     email_subject=email_subject,
@@ -386,21 +394,41 @@ Think step by step and use tools appropriately to handle each email completely."
                         result.order.approval_status if result.order else "failed"
                     ),
                     "inventory_matches": len(result.inventory_matches),
+                    "image_matches": (
+                        len(result.image_matches)
+                        if hasattr(result, "image_matches")
+                        else 0
+                    ),
                     "processing_time_ms": result.processing_time_ms,
                     "items": [],
+                    "confidence_scores": (
+                        result.confidence_scores
+                        if hasattr(result, "confidence_scores")
+                        else {}
+                    ),
                 }
 
-                # Add item details
+                # Add item details with image match info
                 if result.order:
                     for item in result.order.items[:5]:  # Limit to first 5 items
-                        response["items"].append(
-                            {
-                                "tag_code": item.tag_specification.tag_code,
-                                "quantity": item.quantity_ordered,
-                                "brand": item.brand,
-                                "match_score": item.inventory_match_score or 0,
+                        item_data = {
+                            "tag_code": item.tag_specification.tag_code,
+                            "quantity": item.quantity_ordered,
+                            "brand": item.brand,
+                            "match_score": item.inventory_match_score or 0,
+                        }
+                        # Add best image match if available
+                        if hasattr(item, "best_image_match") and item.best_image_match:
+                            item_data["best_image_match"] = {
+                                "tag_code": item.best_image_match.get(
+                                    "tag_code", "Unknown"
+                                ),
+                                "confidence": item.best_image_match.get(
+                                    "confidence", 0
+                                ),
+                                "has_image": "image_path" in item.best_image_match,
                             }
-                        )
+                        response["items"].append(item_data)
 
                 # Add any errors or warnings
                 if result.errors:
@@ -412,6 +440,81 @@ Think step by step and use tools appropriately to handle each email completely."
                     f"Processed complete order {response['order_id']} with action: {response['recommended_action']}"
                 )
 
+                # If human review is needed and orchestrator has human manager, create review automatically
+                if result.recommended_action == "human_review" and hasattr(
+                    self, "human_manager"
+                ):
+                    try:
+                        # Prepare extracted items data
+                        extracted_items = []
+                        if result.order and result.order.items:
+                            for item in result.order.items:
+                                extracted_items.append(
+                                    {
+                                        "tag_code": item.tag_specification.tag_code,
+                                        "tag_type": item.tag_specification.tag_type.value,
+                                        "quantity": item.quantity_ordered,
+                                        "brand": item.brand,
+                                        "match_score": item.inventory_match_score or 0,
+                                    }
+                                )
+
+                        # Create review request with proper data including image matches
+                        review_data = {
+                            "email_data": {
+                                "subject": email_subject,
+                                "from": sender_email,
+                                "body": email_body[:500],  # Truncate for review
+                                "order_id": (
+                                    result.order.order_id if result.order else "N/A"
+                                ),
+                            },
+                            "search_results": (
+                                result.inventory_matches[:10]
+                                if result.inventory_matches
+                                else []
+                            ),
+                            "confidence_score": (
+                                result.order.extraction_confidence
+                                if result.order
+                                else 0
+                            ),
+                            "extracted_items": extracted_items,
+                        }
+
+                        # Add image matches if available
+                        if hasattr(result, "image_matches") and result.image_matches:
+                            review_data["image_matches"] = result.image_matches[
+                                :5
+                            ]  # Top 5 image matches
+                            logger.info(
+                                f"Including {len(result.image_matches)} image matches in review"
+                            )
+
+                        review = await self.human_manager.create_review_request(
+                            **review_data
+                        )
+
+                        response["review_created"] = True
+                        response["review_id"] = review.request_id
+                        logger.info(
+                            f"Created human review {review.request_id} for order {response['order_id']}"
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to create human review: {e}")
+                        response["review_error"] = str(e)
+
+                # Store the actual image matches list if available
+                if hasattr(result, "image_matches") and isinstance(
+                    result.image_matches, list
+                ):
+                    response["image_matches_list"] = result.image_matches
+                    logger.info(
+                        f"Added {len(result.image_matches)} image matches to response"
+                    )
+
+                # Store the result for GUI access
+                self._last_order_result = response
                 return json.dumps(response, indent=2)
 
             except Exception as e:
@@ -423,7 +526,7 @@ Think step by step and use tools appropriately to handle each email completely."
         # Extract data from Excel attachment
         @function_tool(
             name_override="extract_excel_data",
-            description_override="Extract order data from Excel file attachment"
+            description_override="Extract order data from Excel file attachment",
         )
         async def extract_excel_data(filename: str, content: str) -> str:
             """Extract and parse data from Excel attachment"""
@@ -432,46 +535,48 @@ Think step by step and use tools appropriately to handle each email completely."
                 import pandas as pd
                 import tempfile
                 from pathlib import Path
-                
+
                 # Decode base64 content if needed
                 if isinstance(content, str):
                     content_bytes = base64.b64decode(content)
                 else:
                     content_bytes = content
-                
+
                 # Save temporarily and read with pandas
-                with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp_file:
+                with tempfile.NamedTemporaryFile(
+                    suffix=".xlsx", delete=False
+                ) as tmp_file:
                     tmp_file.write(content_bytes)
                     tmp_path = tmp_file.name
-                
+
                 # Read Excel file
                 df = pd.read_excel(tmp_path)
-                
+
                 # Extract relevant data
                 extracted_data = {
                     "filename": filename,
                     "rows": len(df),
                     "columns": list(df.columns),
                     "sample_data": df.head(10).to_dict(orient="records"),
-                    "summary": f"Excel file with {len(df)} rows and {len(df.columns)} columns"
+                    "summary": f"Excel file with {len(df)} rows and {len(df.columns)} columns",
                 }
-                
+
                 # Clean up
                 Path(tmp_path).unlink()
-                
+
                 logger.info(f"Extracted data from Excel: {filename}")
                 return json.dumps(extracted_data, indent=2)
-                
+
             except Exception as e:
                 logger.error(f"Error extracting Excel data: {e}")
                 return json.dumps({"error": str(e), "filename": filename})
-        
+
         tools.append(extract_excel_data)
 
         # Extract data from PDF attachment
         @function_tool(
             name_override="extract_pdf_data",
-            description_override="Extract text content from PDF attachment"
+            description_override="Extract text content from PDF attachment",
         )
         async def extract_pdf_data(filename: str, content: str) -> str:
             """Extract text from PDF attachment"""
@@ -480,48 +585,52 @@ Think step by step and use tools appropriately to handle each email completely."
                 import PyPDF2
                 import tempfile
                 from pathlib import Path
-                
+
                 # Decode base64 content if needed
                 if isinstance(content, str):
                     content_bytes = base64.b64decode(content)
                 else:
                     content_bytes = content
-                
+
                 # Save temporarily
-                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_file:
+                with tempfile.NamedTemporaryFile(
+                    suffix=".pdf", delete=False
+                ) as tmp_file:
                     tmp_file.write(content_bytes)
                     tmp_path = tmp_file.name
-                
+
                 # Read PDF
-                with open(tmp_path, 'rb') as pdf_file:
+                with open(tmp_path, "rb") as pdf_file:
                     pdf_reader = PyPDF2.PdfReader(pdf_file)
                     num_pages = len(pdf_reader.pages)
-                    
+
                     # Extract text from all pages
                     extracted_text = []
-                    for page_num in range(min(num_pages, 10)):  # Limit to first 10 pages
+                    for page_num in range(
+                        min(num_pages, 10)
+                    ):  # Limit to first 10 pages
                         page = pdf_reader.pages[page_num]
                         text = page.extract_text()
                         if text:
                             extracted_text.append(f"Page {page_num + 1}:\n{text}")
-                
+
                 # Clean up
                 Path(tmp_path).unlink()
-                
+
                 result = {
                     "filename": filename,
                     "pages": num_pages,
                     "extracted_text": "\n\n".join(extracted_text),
-                    "summary": f"PDF with {num_pages} pages"
+                    "summary": f"PDF with {num_pages} pages",
                 }
-                
+
                 logger.info(f"Extracted text from PDF: {filename}")
                 return json.dumps(result, indent=2)
-                
+
             except Exception as e:
                 logger.error(f"Error extracting PDF data: {e}")
                 return json.dumps({"error": str(e), "filename": filename})
-        
+
         tools.append(extract_pdf_data)
 
         # Process image attachments tool
@@ -772,36 +881,48 @@ Think step by step and use tools appropriately to handle each email completely."
                 # Prepare attachments if present
                 attachments_data = []
                 attachment_summary = []
-                if email_data.get('attachments'):
-                    logger.info(f"Processing {len(email_data['attachments'])} attachments")
-                    for attachment in email_data['attachments']:
+                if email_data.get("attachments"):
+                    logger.info(
+                        f"Processing {len(email_data['attachments'])} attachments"
+                    )
+                    for attachment in email_data["attachments"]:
                         # Log attachment details
                         logger.debug(f"Attachment: {attachment}")
-                        
+
                         # Store attachment data with file paths
                         att_data = {
-                            'filename': attachment.get('filename', 'unknown'),
-                            'filepath': attachment.get('filepath', ''),  # File path instead of content
-                            'mime_type': attachment.get('mime_type', 'application/octet-stream')
+                            "filename": attachment.get("filename", "unknown"),
+                            "filepath": attachment.get(
+                                "filepath", ""
+                            ),  # File path instead of content
+                            "mime_type": attachment.get(
+                                "mime_type", "application/octet-stream"
+                            ),
                         }
                         attachments_data.append(att_data)
-                        
+
                         # Log if filepath is missing
-                        if not att_data['filepath']:
-                            logger.warning(f"Missing filepath for attachment: {att_data['filename']}")
-                        
+                        if not att_data["filepath"]:
+                            logger.warning(
+                                f"Missing filepath for attachment: {att_data['filename']}"
+                            )
+
                         # Create summary for prompt
-                        attachment_summary.append(f"{attachment.get('filename', 'unknown')} ({attachment.get('mime_type', 'unknown')})")
-                    
-                    logger.info(f"Prepared {len(attachments_data)} attachments for processing")
-                
+                        attachment_summary.append(
+                            f"{attachment.get('filename', 'unknown')} ({attachment.get('mime_type', 'unknown')})"
+                        )
+
+                    logger.info(
+                        f"Prepared {len(attachments_data)} attachments for processing"
+                    )
+
                 # Store attachments in context for tools to access
                 self._current_attachments = attachments_data
                 logger.info(f"Stored {len(attachments_data)} attachments in context")
-                
+
                 # Construct prompt for autonomous processing (without full attachment content)
                 # Don't truncate the email body - it's crucial for extraction
-                email_body = email_data.get('body', 'No body')
+                email_body = email_data.get("body", "No body")
                 prompt = f"""
 Process this email ONCE using your available tools:
 
@@ -899,8 +1020,8 @@ Call process_complete_order and report the results.
                 final_output = str(result) if result else "No output"
                 trace_monitor.end_trace("completed", final_output[:200])
 
-                # Extract results
-                return {
+                # Include the last order result if available
+                result_dict = {
                     "success": True,
                     "email_id": email_data.get("message_id", "unknown"),
                     "processing_complete": True,
@@ -911,6 +1032,22 @@ Call process_complete_order and report the results.
                     "final_summary": str(result),
                     "autonomous_actions": len(tool_calls),
                 }
+
+                # Add the actual order processing result if available
+                if hasattr(self, "_last_order_result") and self._last_order_result:
+                    result_dict["order_result"] = self._last_order_result
+                    # Pass the actual list if available, otherwise the count
+                    if "image_matches_list" in self._last_order_result:
+                        result_dict["image_matches"] = self._last_order_result[
+                            "image_matches_list"
+                        ]
+                    else:
+                        result_dict["image_matches"] = self._last_order_result.get(
+                            "image_matches", 0
+                        )
+                    result_dict["items"] = self._last_order_result.get("items", [])
+
+                return result_dict
 
             except Exception as e:
                 logger.error(f"Error in autonomous processing: {e}")

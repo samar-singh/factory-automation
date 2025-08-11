@@ -46,6 +46,7 @@ class ReviewRequest:
     items: List[Dict[str, Any]]
     search_results: List[Dict[str, Any]]
     priority: Priority
+    image_matches: Optional[List[Dict[str, Any]]] = None
     status: ReviewStatus = ReviewStatus.PENDING
     created_at: datetime = field(default_factory=datetime.now)
     assigned_to: Optional[str] = None
@@ -78,6 +79,7 @@ class HumanInteractionManager:
         search_results: List[Dict[str, Any]],
         confidence_score: float,
         extracted_items: List[Dict[str, Any]],
+        image_matches: Optional[List[Dict[str, Any]]] = None,
     ) -> ReviewRequest:
         """Create a new review request for human approval"""
 
@@ -132,6 +134,7 @@ class HumanInteractionManager:
             items=extracted_items,
             search_results=search_results,
             priority=priority,
+            image_matches=image_matches,
         )
 
         # Add to pending reviews

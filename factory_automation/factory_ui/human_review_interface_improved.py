@@ -412,7 +412,7 @@ class HumanReviewInterface:
                         has_image = False
                         if isinstance(result.get("metadata"), dict):
                             has_image = result["metadata"].get("has_image", False)
-                        
+
                         search_results_formatted.append(
                             {
                                 "name": result.get(

@@ -4,7 +4,6 @@ import json
 import logging
 import os
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -15,6 +14,11 @@ from ..factory_database.connection import get_db
 from ..factory_database.models import Customer, Order
 from ..factory_database.models import OrderItem as DBOrderItem
 from ..factory_database.vector_db import ChromaDBClient
+from ..factory_models.ai_extraction_models import (
+    AIExtractedOrder,
+    OrderItemAI,
+    CustomerInformation as AICustomerInfo,
+)
 from ..factory_models.order_models import (
     Attachment,
     AttachmentType,
@@ -22,7 +26,6 @@ from ..factory_models.order_models import (
     DeliveryInfo,
     ExtractedOrder,
     FitTagMapping,
-    HumanReviewRequest,
     HumanReviewResponse,
     InventoryUpdate,
     Material,
@@ -37,6 +40,7 @@ from ..factory_models.order_models import (
 from ..factory_rag.enhanced_search import EnhancedRAGSearch
 from .human_interaction_manager import HumanInteractionManager
 from .image_processor_agent import ImageProcessorAgent
+from .visual_similarity_search import VisualSimilaritySearch
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +58,9 @@ class OrderProcessorAgent:
         self.openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
         self.image_processor = ImageProcessorAgent(chromadb_client)
         self.human_manager = human_manager or HumanInteractionManager()
+        self.visual_search = VisualSimilaritySearch(
+            chromadb_client
+        )  # Visual similarity search
 
         # Lazy-load enhanced search to avoid startup timeout
         self._enhanced_search = None
@@ -92,7 +99,9 @@ class OrderProcessorAgent:
             if attachments:
                 await self._process_attachments(extracted_order, attachments)
                 # Recalculate confidence after processing attachments
-                extracted_order.extraction_confidence = self._recalculate_confidence_with_attachments(extracted_order)
+                extracted_order.extraction_confidence = (
+                    self._recalculate_confidence_with_attachments(extracted_order)
+                )
 
             # Step 3: Search inventory for each item
             inventory_matches = await self._search_inventory_for_items(extracted_order)
@@ -122,9 +131,14 @@ class OrderProcessorAgent:
                 (datetime.now() - start_time).total_seconds() * 1000
             )
 
+            # Separate image matches from text matches
+            image_matches = [m for m in inventory_matches if m.get("type") == "image"]
+            text_matches = [m for m in inventory_matches if m.get("type") != "image"]
+
             return OrderProcessingResult(
                 order=extracted_order,
-                inventory_matches=inventory_matches,
+                inventory_matches=text_matches,  # Text-based matches
+                image_matches=image_matches,  # Image-based matches
                 confidence_scores=confidence_scores,
                 recommended_action=recommended_action,
                 inventory_updates=inventory_updates,
@@ -204,144 +218,356 @@ class OrderProcessorAgent:
         """
 
         try:
-            response = await self.openai_client.chat.completions.create(
-                model="gpt-4-turbo-preview",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": """You are an expert at extracting structured order information from garment industry emails.
-                        This is a garment tag manufacturing company, so ALL emails are about ordering tags/labels.
-                        Focus on finding: tag types, quantities, brands, and special requirements.
-                        ALWAYS extract at least one item being ordered, even if you have to infer from context.
-                        Common items ordered: price tags, care labels, size tags, brand labels, wash care labels.
-                        If no specific items are mentioned, assume they want price tags.
-                        Always return valid JSON matching the provided schema.""",
-                    },
-                    {"role": "user", "content": extraction_prompt},
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.1,
-                max_tokens=3000,
-            )
+            # Check if beta parse method is available (requires OpenAI SDK 1.50+)
+            if hasattr(self.openai_client, "beta") and hasattr(
+                self.openai_client.beta, "chat"
+            ):
+                try:
+                    # Use the new structured output API (requires gpt-4o or gpt-4o-mini)
+                    response = await self.openai_client.beta.chat.completions.parse(
+                        model="gpt-4o-mini",  # Changed from gpt-4-turbo-preview
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": """You are an expert at extracting structured order information from garment industry emails.
+                                This is a garment tag manufacturing company, so ALL emails are about ordering tags/labels.
+                                Focus on finding: tag types, quantities, brands, and special requirements.
+                                ALWAYS extract at least one item being ordered, even if you have to infer from context.
+                                Common items ordered: price tags, care labels, size tags, brand labels, wash care labels.
+                                If no specific items are mentioned, assume they want price tags.""",
+                            },
+                            {"role": "user", "content": extraction_prompt},
+                        ],
+                        response_format=AIExtractedOrder,  # Direct Pydantic model
+                        temperature=0.1,
+                        max_tokens=3000,
+                    )
 
-            extracted_data = json.loads(response.choices[0].message.content)
-            
-            # Log what the AI extracted
-            logger.info(f"AI extracted data: {json.dumps(extracted_data, indent=2)[:500]}...")
-            logger.info(f"Number of items extracted: {len(extracted_data.get('items', []))}") 
-            
+                    # Access the parsed Pydantic model directly
+                    ai_order = response.choices[0].message.parsed
+
+                    # If parsing failed, AI returns None
+                    if ai_order is None:
+                        raise ValueError("AI returned None for structured output")
+
+                except Exception as e:
+                    logger.warning(
+                        f"Structured output API failed: {e}. Falling back to JSON mode..."
+                    )
+                    # Fall back to JSON mode
+                    response = await self.openai_client.chat.completions.create(
+                        model="gpt-4-turbo-preview",  # Can use turbo for JSON mode
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": """You are an expert at extracting structured order information from garment industry emails.
+                                Return a JSON object with: customer_information, order_items, delivery_requirements.
+                                ALWAYS include at least one item in order_items.""",
+                            },
+                            {"role": "user", "content": extraction_prompt},
+                        ],
+                        response_format={"type": "json_object"},
+                        temperature=0.1,
+                        max_tokens=3000,
+                    )
+
+                    # Parse JSON manually
+                    raw_data = json.loads(response.choices[0].message.content)
+
+                    # Get order items or create default
+                    items = raw_data.get("order_items", raw_data.get("items", []))
+                    if not items:
+                        items = [
+                            OrderItemAI(
+                                tag_code="GENERIC", tag_type="price_tag", quantity=1
+                            )
+                        ]
+
+                    # Create AI order with defaults for required fields
+                    ai_order = AIExtractedOrder(
+                        customer_information=AICustomerInfo(
+                            company=raw_data.get("customer_information", {}).get(
+                                "company", "Unknown"
+                            ),
+                            email=raw_data.get("customer_information", {}).get(
+                                "email", sender_email
+                            ),
+                        ),
+                        order_items=items,
+                        delivery_requirements=raw_data.get("delivery_requirements"),
+                        brand=raw_data.get("brand"),
+                        po_number=raw_data.get("po_number"),
+                        special_instructions=raw_data.get("special_instructions"),
+                    )
+            else:
+                # Old SDK version - use JSON mode
+                logger.info(
+                    "Using JSON mode (OpenAI SDK doesn't support structured outputs)"
+                )
+                response = await self.openai_client.chat.completions.create(
+                    model="gpt-4-turbo-preview",
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": """You are an expert at extracting structured order information.
+                            Return JSON with: customer_information, order_items, delivery_requirements.""",
+                        },
+                        {"role": "user", "content": extraction_prompt},
+                    ],
+                    response_format={"type": "json_object"},
+                    temperature=0.1,
+                    max_tokens=3000,
+                )
+
+                raw_data = json.loads(response.choices[0].message.content)
+
+                # Get order items or create default
+                items = raw_data.get("order_items", raw_data.get("items", []))
+                if not items:
+                    items = [
+                        OrderItemAI(
+                            tag_code="GENERIC", tag_type="price_tag", quantity=1
+                        )
+                    ]
+
+                ai_order = AIExtractedOrder(
+                    customer_information=AICustomerInfo(
+                        company=raw_data.get("customer_information", {}).get(
+                            "company", "Unknown"
+                        ),
+                        email=raw_data.get("customer_information", {}).get(
+                            "email", sender_email
+                        ),
+                    ),
+                    order_items=items,
+                )
+
+            # Log what the AI extracted (convert model to dict for logging)
+            if ai_order:
+                logger.info(
+                    f"AI extracted data: {ai_order.model_dump_json(indent=2)[:500]}..."
+                )
+            else:
+                logger.warning("AI returned None for order extraction")
+                # Create empty model as fallback
+                ai_order = AIExtractedOrder()
+
+            # Get items using helper method
+            items_data = ai_order.get_order_items()
+            logger.info(f"Number of items extracted: {len(items_data)}")
+
             # If no items extracted, create a default item based on email content
-            if not extracted_data.get('items'):
-                logger.warning("AI didn't extract any items. Creating default order item...")
+            if not items_data:
+                logger.warning(
+                    "AI didn't extract any items. Creating default order item..."
+                )
                 # Try to find any quantity mentioned
                 import re
-                qty_match = re.search(r'(\d+)\s*(pcs|pieces|tags|units|nos)?', email_body, re.IGNORECASE)
-                quantity = int(qty_match.group(1)) if qty_match else 100  # Default to 100
-                
+
+                qty_match = re.search(
+                    r"(\d+)\s*(pcs|pieces|tags|units|nos)?", email_body, re.IGNORECASE
+                )
+                quantity = (
+                    int(qty_match.group(1)) if qty_match else 100
+                )  # Default to 100
+
                 # Try to find brand
-                brand_patterns = ['Allen Solly', 'Peter England', 'Van Heusen', 'Louis Philippe', 'Myntra']
+                brand_patterns = [
+                    "Allen Solly",
+                    "Peter England",
+                    "Van Heusen",
+                    "Louis Philippe",
+                    "Myntra",
+                ]
                 brand_found = "Unknown"
                 for brand in brand_patterns:
                     if brand.lower() in email_body.lower():
                         brand_found = brand
                         break
-                
-                # Create a default item
-                extracted_data['items'] = [{
-                    'tag_code': 'GENERIC-PRICE-TAG',
-                    'tag_type': 'price_tag',
-                    'quantity': quantity,
-                    'brand': brand_found,
-                    'remarks': 'Extracted from email context - needs verification'
-                }]
-                logger.info(f"Created default item: {quantity} price tags for {brand_found}")
 
-            # Parse into Pydantic model
-            order_items = []
-            for item_data in extracted_data.get("items", []):
-                # Create TagSpecification
-                tag_spec = TagSpecification(
-                    tag_code=item_data.get("tag_code", "UNKNOWN"),
-                    tag_type=TagType(item_data.get("tag_type", "other")),
-                    quantity=item_data.get("quantity", 0),
-                    color=item_data.get("color"),
-                    size=item_data.get("size"),
-                    material=(
-                        Material(item_data.get("material", "other"))
-                        if item_data.get("material")
-                        else None
-                    ),
-                    remarks=item_data.get("remarks"),
+                # Create a default item - use same field name as AI returns
+                # Create a default item using our AI model
+                default_item = OrderItemAI(
+                    tag_code="GENERIC-PRICE-TAG",
+                    tag_type="price_tag",
+                    quantity=quantity,
+                    brand=brand_found,
+                    remarks="Extracted from email context - needs verification",
+                )
+                items_data = [default_item]
+                logger.info(
+                    f"Created default item: {quantity} price tags for {brand_found}"
                 )
 
-                # Create FitTagMapping if present
+            # Convert AI items to our strict OrderItem model
+            order_items = []
+            for item_data in items_data:
+                # Handle both dict and Pydantic model
+                if isinstance(item_data, OrderItemAI):
+                    item_dict = item_data.model_dump()
+                else:
+                    item_dict = item_data
+                # Normalize tag type (convert "Fit Tag" to "fit_tag", etc.)
+                tag_type_raw = item_dict.get("tag_type", "other")
+                tag_type_normalized = (
+                    tag_type_raw.lower().replace(" ", "_").replace("-", "_")
+                )
+
+                # Map common variations to valid enum values
+                tag_type_mapping = {
+                    "fit_tag": TagType.FIT_TAG,
+                    "price_tag": TagType.PRICE_TAG,
+                    "price_tags": TagType.PRICE_TAG,
+                    "hang_tag": TagType.HANG_TAG,
+                    "care_label": TagType.CARE_LABEL,
+                    "care_labels": TagType.CARE_LABEL,
+                    "brand_label": TagType.BRAND_LABEL,
+                    "size_label": TagType.SIZE_LABEL,
+                    "main_tag": TagType.MAIN_TAG,
+                    "barcode_sticker": TagType.BARCODE_STICKER,
+                    "woven_label": TagType.WOVEN_LABEL,
+                    "printed_label": TagType.PRINTED_LABEL,
+                    "sustainability_tag": TagType.SUSTAINABILITY_TAG,
+                }
+
+                tag_type_enum = tag_type_mapping.get(tag_type_normalized, TagType.OTHER)
+
+                # Handle both single tag_code and multiple tag_codes
+                tag_codes = item_dict.get("tag_codes", [])
+                tag_code = item_dict.get("tag_code")
+
+                # If we have multiple tag codes, create an item for each
+                if tag_codes and isinstance(tag_codes, list):
+                    # Use the first code as primary, or combine them
+                    tag_code = tag_codes[0] if tag_codes else "UNKNOWN"
+                    # Could also join them: tag_code = ", ".join(tag_codes)
+                elif not tag_code:
+                    tag_code = "UNKNOWN"
+
+                # Get quantity and ensure it's positive
+                quantity = item_dict.get("quantity", 1)
+                if quantity is None:
+                    quantity = 1
+                elif isinstance(quantity, str):
+                    # Try to extract number from string
+                    import re
+
+                    qty_match = re.search(r"\d+", str(quantity))
+                    quantity = int(qty_match.group()) if qty_match else 1
+                elif quantity <= 0:
+                    quantity = 1  # Default to 1 if 0 or negative
+
+                # Create TagSpecification
+                tag_spec = TagSpecification(
+                    tag_code=tag_code,
+                    tag_type=tag_type_enum,
+                    quantity=quantity,
+                    color=item_dict.get("color"),
+                    size=item_dict.get("size"),
+                    material=(
+                        Material(item_dict.get("material", "other"))
+                        if item_dict.get("material")
+                        else None
+                    ),
+                    remarks=item_dict.get("remarks"),
+                )
+
+                # Create FitTagMapping if fit information is present
                 fit_mapping = None
-                if item_data.get("fit_mapping"):
-                    fit_data = item_data["fit_mapping"]
+                if item_dict.get("fit"):
+                    # Create basic mapping from fit field
                     fit_mapping = FitTagMapping(
-                        fit_type=fit_data.get("fit_type", ""),
-                        fit_tag_codes=fit_data.get("fit_tag_codes", []),
-                        main_tag_code=fit_data.get("main_tag_code", ""),
-                        main_tag_remark=fit_data.get("main_tag_remark"),
+                        fit_type=item_dict.get("fit", "Unknown"),
+                        fit_tag_codes=tag_codes if tag_codes else [tag_code],
+                        main_tag_code=tag_code,
+                        main_tag_remark=item_dict.get("remarks"),
                     )
 
-                # Create OrderItem
+                # Create OrderItem - ensure brand is never None
+                item_brand = item_dict.get("brand")
+                if not item_brand:  # Handle None, empty string, etc.
+                    item_brand = ai_order.get_brand() or "Unknown"
+
                 order_item = OrderItem(
                     item_id=f"ITEM-{len(order_items)+1:03d}",
                     tag_specification=tag_spec,
-                    brand=item_data.get(
-                        "brand", extracted_data.get("brand", "Unknown")
-                    ),
-                    category=item_data.get("category"),
+                    brand=item_brand,
+                    category=item_dict.get("category"),
                     fit_mapping=fit_mapping,
-                    quantity_ordered=item_data.get("quantity", 0),
+                    quantity_ordered=quantity,
                 )
 
                 order_items.append(order_item)
 
+            # Get customer info using helper method
+            customer_info = ai_order.get_customer_info()
+
             # Create customer info
             customer = CustomerInfo(
-                company_name=extracted_data.get("customer_name", "Unknown"),
-                contact_person=extracted_data.get("contact_person"),
-                email=sender_email,
-                phone=extracted_data.get("phone"),
+                company_name=customer_info.company
+                or customer_info.contact_person
+                or "Unknown",
+                contact_person=customer_info.contact_person,
+                email=customer_info.email or sender_email,
+                phone=customer_info.phone,
             )
+
+            # Get delivery info using helper method
+            delivery_info = ai_order.get_delivery_info()
+
+            # Map urgency strings to enum
+            urgency_str = (delivery_info.urgency or "normal").lower()
+            urgency_map = {
+                "urgent": OrderPriority.URGENT,
+                "high": OrderPriority.HIGH,
+                "medium": OrderPriority.MEDIUM,
+                "low": OrderPriority.LOW,
+                "normal": OrderPriority.NORMAL,
+            }
+            urgency = urgency_map.get(urgency_str, OrderPriority.NORMAL)
 
             # Create delivery info
             delivery = DeliveryInfo(
                 required_date=(
-                    datetime.fromisoformat(extracted_data["delivery_date"])
-                    if extracted_data.get("delivery_date")
+                    datetime.fromisoformat(delivery_info.delivery_date)
+                    if delivery_info.delivery_date
                     else None
                 ),
-                urgency=OrderPriority(extracted_data.get("urgency", "normal")),
-                special_instructions=extracted_data.get("special_instructions"),
+                urgency=urgency,
+                special_instructions=delivery_info.special_instructions
+                or ai_order.special_instructions,
             )
 
             # Create proforma invoice if present
             proforma = None
-            if extracted_data.get("proforma_invoice"):
-                invoice_data = extracted_data["proforma_invoice"]
+            if ai_order.proforma_invoice_details:
+                invoice_data = ai_order.proforma_invoice_details
                 proforma = ProformaInvoice(
-                    invoice_number=invoice_data.get("number", "Unknown"),
+                    invoice_number=invoice_data.invoice_number or "Unknown",
                     invoice_date=(
-                        datetime.fromisoformat(invoice_data["date"])
-                        if invoice_data.get("date")
+                        datetime.fromisoformat(invoice_data.invoice_date)
+                        if invoice_data.invoice_date
                         else None
                     ),
                 )
 
             # Calculate extraction confidence
-            confidence = self._calculate_extraction_confidence(extracted_data)
+            # Convert model to dict for confidence calculation
+            raw_data = ai_order.model_dump() if ai_order else {}
+            confidence = self._calculate_extraction_confidence(raw_data)
 
             # Log order items before creating ExtractedOrder
             logger.info(f"Created {len(order_items)} order items from extraction")
             if order_items:
-                logger.info(f"First item: {order_items[0].tag_specification.tag_code if order_items else 'None'}")
-            
+                logger.info(
+                    f"First item: {order_items[0].tag_specification.tag_code if order_items else 'None'}"
+                )
+
             # Ensure we always have at least one item
             if not order_items:
-                logger.warning("No order items created. Adding generic item for search...")
+                logger.warning(
+                    "No order items created. Adding generic item for search..."
+                )
                 # Create a generic item to ensure search happens
                 generic_item = OrderItem(
                     item_id="ITEM-001",
@@ -349,13 +575,13 @@ class OrderProcessorAgent:
                         tag_code="GENERIC-TAG",
                         tag_type=TagType.price_tag,
                         quantity=100,
-                        remarks="Generic order - needs clarification"
+                        remarks="Generic order - needs clarification",
                     ),
-                    brand=extracted_data.get("brand", "Unknown"),
+                    brand=ai_order.get_brand() or "Unknown",
                     quantity_ordered=100,
                 )
                 order_items.append(generic_item)
-            
+
             # Create ExtractedOrder
             extracted_order = ExtractedOrder(
                 email_subject=email_subject,
@@ -363,11 +589,14 @@ class OrderProcessorAgent:
                 customer=customer,
                 items=order_items,
                 proforma_invoice=proforma,
-                purchase_order_number=extracted_data.get("po_number"),
+                purchase_order_number=ai_order.po_number
+                or ai_order.purchase_order_number,
                 delivery=delivery,
-                extraction_confidence=confidence if order_items else 0.2,  # Low confidence if we had to add generic
+                extraction_confidence=(
+                    confidence if order_items else 0.2
+                ),  # Low confidence if we had to add generic
                 extraction_method="ai_gpt4",
-                missing_information=extracted_data.get("missing_information", []),
+                missing_information=ai_order.missing_information or [],
                 requires_clarification=len(order_items) == 0 or confidence < 0.6,
             )
 
@@ -396,7 +625,7 @@ class OrderProcessorAgent:
         for att in attachments:
             filename = att.get("filename", "")
             filepath = att.get("filepath", "")  # Get file path instead of content
-            
+
             # Skip if no filepath provided
             if not filepath:
                 logger.warning(f"No filepath provided for attachment: {filename}")
@@ -415,7 +644,38 @@ class OrderProcessorAgent:
             if filename.endswith((".xlsx", ".xls", ".csv")):
                 att_type = AttachmentType.EXCEL  # Treat CSV as Excel type
                 # Process Excel/CSV file
-                extracted_data = await self._process_excel_attachment(filepath, filename)
+                extracted_data = await self._process_excel_attachment(
+                    filepath, filename
+                )
+
+                # Check if Excel had embedded images that were extracted
+                if (
+                    hasattr(self, "_excel_extracted_images")
+                    and self._excel_extracted_images
+                ):
+                    logger.info(
+                        f"Processing {len(self._excel_extracted_images)} images extracted from Excel"
+                    )
+                    for img_info in self._excel_extracted_images:
+                        # Process each extracted image
+                        img_result = await self._process_image_attachment(
+                            img_info["filepath"],
+                            img_info["filename"],
+                            order.order_id,
+                            order.customer.company_name,
+                        )
+                        # Add as separate attachment
+                        order.attachments.append(
+                            Attachment(
+                                filename=img_info["filename"],
+                                type=AttachmentType.IMAGE,
+                                mime_type=img_info["mime_type"],
+                                file_path=img_info["filepath"],
+                                extracted_data=img_result,
+                            )
+                        )
+                    # Clear the temporary storage
+                    self._excel_extracted_images = []
             elif filename.endswith((".jpg", ".jpeg", ".png", ".gif")):
                 att_type = AttachmentType.IMAGE
                 # Process image with Qwen2.5VL
@@ -452,10 +712,12 @@ class OrderProcessorAgent:
             if not filepath:
                 logger.error(f"Empty filepath for image attachment: {filename}")
                 return {"error": "Empty filepath", "filename": filename}
-            
+
             # Directly use the file path
             if not os.path.exists(filepath):
-                logger.error(f"Image attachment file not found: {filepath} (filename: {filename})")
+                logger.error(
+                    f"Image attachment file not found: {filepath} (filename: {filename})"
+                )
                 raise FileNotFoundError(f"Attachment file not found: {filepath}")
 
             # Process and store in ChromaDB
@@ -478,57 +740,58 @@ class OrderProcessorAgent:
     async def _process_excel_attachment(
         self, filepath: str, filename: str
     ) -> Dict[str, Any]:
-        """Process Excel attachment to extract order data"""
+        """Process Excel attachment to extract order data and embedded images"""
 
         try:
             # Check if filepath is valid
             if not filepath:
                 logger.error(f"Empty filepath for Excel attachment: {filename}")
                 return {"error": "Empty filepath", "filename": filename}
-            
+
             # Directly use the file path
             if not os.path.exists(filepath):
-                logger.error(f"Excel attachment file not found: {filepath} (filename: {filename})")
+                logger.error(
+                    f"Excel attachment file not found: {filepath} (filename: {filename})"
+                )
                 raise FileNotFoundError(f"Attachment file not found: {filepath}")
 
-            # Read Excel file - try different engines based on file extension
-            file_ext = Path(filename).suffix.lower()
-            df = None
-            
-            try:
-                if file_ext == '.xlsx':
-                    # Use openpyxl for modern Excel files
-                    df = pd.read_excel(filepath, engine='openpyxl')
-                elif file_ext == '.xls':
-                    # Use xlrd for older Excel files
-                    df = pd.read_excel(filepath, engine='xlrd')
-                elif file_ext == '.csv':
-                    # Handle CSV files
-                    df = pd.read_csv(filepath)
-                else:
-                    # Try auto-detection
-                    df = pd.read_excel(filepath)
-            except Exception as e:
-                # Fallback attempts
-                logger.warning(f"Initial read failed: {e}. Trying alternative methods...")
-                try:
-                    # Try as CSV regardless of extension
-                    df = pd.read_csv(filepath)
-                except:
-                    try:
-                        # Force openpyxl
-                        df = pd.read_excel(filepath, engine='openpyxl')
-                    except:
-                        # Force xlrd as last resort
-                        df = pd.read_excel(filepath, engine='xlrd')
+            # Use enhanced Excel processor to extract data AND images
+            from .excel_with_images_processor import process_excel_with_images
+
+            result = await process_excel_with_images(filepath, filename)
+
+            if result.get("error"):
+                logger.error(f"Error processing Excel: {result['error']}")
+                return {"error": result["error"], "filename": filename}
+
+            # Process extracted images if any
+            extracted_images = result.get("images", [])
+            if extracted_images:
+                logger.info(f"Found {len(extracted_images)} embedded images in Excel")
+                # Store image paths for later processing
+                self._excel_extracted_images = extracted_images
+
+            # Get the data
+            excel_data = result.get("data", [])
+            if excel_data:
+                df = pd.DataFrame(excel_data)
+            else:
+                df = pd.DataFrame()
 
             # Extract relevant data
             extracted_data = {
                 "filename": filename,
                 "rows": len(df),
-                "columns": list(df.columns),
-                "data": df.to_dict(orient="records"),
+                "columns": list(df.columns) if not df.empty else [],
+                "data": df.to_dict(orient="records") if not df.empty else [],
             }
+
+            # Add image info if images were extracted
+            if extracted_images:
+                extracted_data["embedded_images"] = len(extracted_images)
+                extracted_data["image_files"] = [
+                    img["filename"] for img in extracted_images
+                ]
 
             return extracted_data
 
@@ -539,49 +802,84 @@ class OrderProcessorAgent:
     async def _process_pdf_attachment(
         self, filepath: str, filename: str
     ) -> Dict[str, Any]:
-        """Process PDF attachment using pdfplumber"""
-        import pdfplumber
-        
+        """Process PDF attachment using pdfplumber with error handling"""
+        try:
+            import pdfplumber
+        except ImportError:
+            logger.error("pdfplumber not installed")
+            return {
+                "error": "PDF processing library not available",
+                "filename": filename,
+            }
+
         try:
             # Check if filepath is valid
             if not filepath:
                 logger.error(f"Empty filepath for PDF attachment: {filename}")
                 return {"error": "Empty filepath", "filename": filename}
-            
+
             # Directly use the file path
             if not os.path.exists(filepath):
-                logger.error(f"PDF attachment file not found: {filepath} (filename: {filename})")
-                raise FileNotFoundError(f"Attachment file not found: {filepath}")
-            
-            # Extract text and tables from PDF
+                logger.error(
+                    f"PDF attachment file not found: {filepath} (filename: {filename})"
+                )
+                return {"error": f"File not found: {filepath}", "filename": filename}
+
+            # Extract text and tables from PDF with safety limits
             extracted_text = []
             extracted_tables = []
-            
+            max_pages = 10  # Limit pages to prevent memory issues
+            max_text_length = 50000  # Limit total text length
+
             with pdfplumber.open(filepath) as pdf:
-                for page_num, page in enumerate(pdf.pages):
-                    # Extract text
-                    text = page.extract_text()
-                    if text:
-                        extracted_text.append(f"Page {page_num + 1}:\n{text}")
-                    
-                    # Extract tables
-                    tables = page.extract_tables()
-                    for table in tables:
-                        if table:
-                            extracted_tables.append({
-                                "page": page_num + 1,
-                                "data": table
-                            })
-            
+                logger.info(f"Processing PDF {filename} with {len(pdf.pages)} pages")
+
+                # Process limited number of pages
+                pages_to_process = min(len(pdf.pages), max_pages)
+                total_text_length = 0
+
+                for page_num, page in enumerate(pdf.pages[:pages_to_process]):
+                    try:
+                        # Extract text with length limit
+                        text = page.extract_text()
+                        if text:
+                            # Check if we've exceeded text limit
+                            if total_text_length + len(text) > max_text_length:
+                                logger.warning(
+                                    f"PDF {filename}: Text limit reached at page {page_num+1}"
+                                )
+                                break
+                            extracted_text.append(f"Page {page_num + 1}:\n{text}")
+                            total_text_length += len(text)
+
+                        # Extract tables (limit to first 5 tables total)
+                        if len(extracted_tables) < 5:
+                            tables = page.extract_tables()
+                            for table in tables:
+                                if table and len(extracted_tables) < 5:
+                                    extracted_tables.append(
+                                        {"page": page_num + 1, "data": table}
+                                    )
+                    except Exception as e:
+                        logger.warning(
+                            f"Error processing page {page_num+1} of {filename}: {e}"
+                        )
+                        continue
+
+                if len(pdf.pages) > max_pages:
+                    logger.info(
+                        f"PDF {filename}: Processed first {max_pages} of {len(pdf.pages)} pages"
+                    )
+
             return {
                 "filename": filename,
                 "type": "pdf",
-                "pages": len(pdf.pages) if 'pdf' in locals() else 0,
+                "pages": len(pdf.pages) if "pdf" in locals() else 0,
                 "text": "\n\n".join(extracted_text),
                 "tables": extracted_tables,
-                "status": "processed"
+                "status": "processed",
             }
-            
+
         except Exception as e:
             logger.error(f"Error processing PDF attachment: {e}")
             return {"filename": filename, "type": "pdf", "error": str(e)}
@@ -595,19 +893,21 @@ class OrderProcessorAgent:
             if not filepath:
                 logger.error(f"Empty filepath for Word attachment: {filename}")
                 return {"error": "Empty filepath", "filename": filename}
-            
+
             # Directly use the file path
             if not os.path.exists(filepath):
-                logger.error(f"Word attachment file not found: {filepath} (filename: {filename})")
+                logger.error(
+                    f"Word attachment file not found: {filepath} (filename: {filename})"
+                )
                 raise FileNotFoundError(f"Attachment file not found: {filepath}")
-            
+
             # TODO: Implement Word document processing (requires python-docx library)
             # For now, just acknowledge the file exists
             return {
                 "filename": filename,
                 "type": "word",
                 "filepath": filepath,
-                "status": "file_exists_not_processed"
+                "status": "file_exists_not_processed",
             }
         except Exception as e:
             logger.error(f"Error processing Word attachment: {e}")
@@ -619,7 +919,7 @@ class OrderProcessorAgent:
         """Search inventory using enhanced search with reranking"""
 
         all_matches = []
-        
+
         # Log what we're searching for
         logger.info(f"Searching inventory for {len(order.items)} items")
         if not order.items:
@@ -630,28 +930,31 @@ class OrderProcessorAgent:
             # Create search query from item details
             # Build query parts, filtering out generic/unknown values
             query_parts = []
-            
+
             # Add brand if it's not generic
             if item.brand and item.brand not in ["Unknown", "GENERIC"]:
                 query_parts.append(item.brand)
-            
+
             # Add tag code if it's not generic
-            if item.tag_specification.tag_code and "GENERIC" not in item.tag_specification.tag_code:
+            if (
+                item.tag_specification.tag_code
+                and "GENERIC" not in item.tag_specification.tag_code
+            ):
                 query_parts.append(item.tag_specification.tag_code)
-            
+
             # Always add tag type
             tag_type_str = item.tag_specification.tag_type.value.replace("_", " ")
             query_parts.append(tag_type_str)
-            
+
             # Add specific attributes
             if item.tag_specification.color:
                 query_parts.append(item.tag_specification.color)
             if item.tag_specification.material:
                 query_parts.append(item.tag_specification.material)
-            
+
             # Build search query
             search_query = " ".join(query_parts) if query_parts else "price tag"
-            
+
             # If query is too generic, try to make it more specific
             if search_query in ["price tag", "tag", "label"]:
                 # Try to add brand context from the order
@@ -663,13 +966,13 @@ class OrderProcessorAgent:
 
             # Log the search query
             logger.info(f"Searching for item {item.item_id}: '{search_query}'")
-            
+
             # Prepare filters - only use brand filter if it's specific
             filters = None
             if item.brand and item.brand not in ["Unknown", "GENERIC"]:
                 filters = {"brand": item.brand}
                 logger.debug(f"Using brand filter: {item.brand}")
-            
+
             # Use enhanced search with reranking
             try:
                 search_results, search_stats = self.enhanced_search.search(
@@ -682,13 +985,15 @@ class OrderProcessorAgent:
                 logger.error(f"Search failed for query '{search_query}': {e}")
                 search_results = []
                 search_stats = {"final_results": 0, "semantic_candidates": 0}
-            
+
             # Log search results
             logger.info(f"Found {len(search_results)} results for item {item.item_id}")
-            
+
             # If no results, try a broader search
             if not search_results and search_query != "tag":
-                logger.info(f"No results for '{search_query}'. Trying broader search...")
+                logger.info(
+                    f"No results for '{search_query}'. Trying broader search..."
+                )
                 try:
                     # Try with just "tag" or "label"
                     broader_query = "tag" if "tag" in search_query.lower() else "label"
@@ -738,70 +1043,161 @@ class OrderProcessorAgent:
             )
 
             # Also search in image collection if tag image exists
-            image_matches = await self.image_processor.search_similar_images(
-                search_query, limit=3
+            # Check if there are image attachments for this order
+            has_image_attachment = any(
+                att.type == AttachmentType.IMAGE for att in (order.attachments or [])
             )
 
-            for img_match in image_matches:
-                all_matches.append(
-                    {
-                        "item_id": item.item_id,
-                        "type": "image",
-                        "image_hash": img_match["image_hash"],
-                        "confidence": img_match["similarity_score"],
-                        "analysis": img_match["analysis"],
-                    }
+        # After processing all text searches, do visual similarity search if we have images
+        if has_image_attachment:
+            logger.info("Performing visual similarity search for customer images")
+
+            # Collect paths of customer images
+            customer_image_paths = []
+            for att in order.attachments:
+                if att.type == AttachmentType.IMAGE and att.file_path:
+                    customer_image_paths.append(att.file_path)
+                    logger.info(f"Using customer image: {att.filename}")
+
+            # Get visual matches for all items
+            if customer_image_paths:
+                visual_matches = await self.visual_search.find_best_matches_for_order(
+                    customer_image_paths, order.items, limit_per_item=5
                 )
+
+                # Track seen tag_codes to avoid duplicates across all items
+                seen_tag_codes = set()
+
+                # Add visual matches to the all_matches list
+                for item_id, matches in visual_matches.items():
+                    # Find the corresponding item
+                    item = next((i for i in order.items if i.item_id == item_id), None)
+                    if not item:
+                        continue
+
+                    for img_match in matches:
+                        tag_code = img_match.get("tag_code", "")
+
+                        # Skip if we've already added this tag_code to all_matches
+                        if tag_code and tag_code in seen_tag_codes:
+                            logger.debug(
+                                f"Skipping duplicate tag_code {tag_code} for item {item_id}"
+                            )
+                            continue
+
+                        image_match_data = {
+                            "item_id": item_id,
+                            "type": "image",
+                            "similarity_score": img_match.get("similarity_score", 0.0),
+                            "confidence": img_match.get(
+                                "similarity_score", 0.0
+                            ),  # Use similarity as confidence
+                            "tag_code": tag_code,
+                            "brand": img_match.get("brand", ""),
+                            "image_path": img_match.get("image_path", ""),
+                            "metadata": img_match.get("metadata", {}),
+                        }
+                        all_matches.append(image_match_data)
+
+                        # Mark this tag_code as seen
+                        if tag_code:
+                            seen_tag_codes.add(tag_code)
+
+                        # Update item's best match if this image match is better
+                        if img_match.get("similarity_score", 0) > (
+                            item.inventory_match_score or 0
+                        ):
+                            item.inventory_match_score = img_match.get(
+                                "similarity_score", 0
+                            )
+                            item.best_image_match = image_match_data
+                            logger.info(
+                                f"Item {item_id}: Best visual match is {img_match.get('tag_code')} with {img_match.get('similarity_score', 0):.2%} similarity"
+                            )
 
         return all_matches
 
     def _calculate_confidence_scores(
         self, order: ExtractedOrder, inventory_matches: List[Dict[str, Any]]
     ) -> Dict[str, float]:
-        """Calculate confidence scores for each item"""
+        """Calculate confidence scores for each item including image similarity"""
 
         confidence_scores = {}
 
         for item in order.items:
-            # Get matches for this item
+            # Get all matches for this item
             item_matches = [
                 m for m in inventory_matches if m.get("item_id") == item.item_id
             ]
 
-            if item_matches:
-                # Average confidence of top matches
-                top_confidences = sorted(
-                    [m.get("confidence", 0) for m in item_matches], reverse=True
-                )[:3]
-                avg_confidence = sum(top_confidences) / len(top_confidences)
-            else:
-                avg_confidence = 0.0
+            # Separate text and image matches
+            text_matches = [m for m in item_matches if m.get("type") != "image"]
+            image_matches = [m for m in item_matches if m.get("type") == "image"]
 
-            confidence_scores[item.item_id] = avg_confidence
+            # Calculate text-based confidence
+            text_confidence = 0.0
+            if text_matches:
+                top_text_confidences = sorted(
+                    [m.get("confidence", 0) for m in text_matches], reverse=True
+                )[:3]
+                text_confidence = sum(top_text_confidences) / len(top_text_confidences)
+
+            # Calculate image-based confidence
+            image_confidence = 0.0
+            if image_matches:
+                top_image_confidences = sorted(
+                    [m.get("confidence", 0) for m in image_matches], reverse=True
+                )[:3]
+                image_confidence = sum(top_image_confidences) / len(
+                    top_image_confidences
+                )
+
+            # Combine confidences with weighted average
+            # If we have high image confidence (>0.85), it's a strong signal
+            if image_confidence > 0.85:
+                # Image match is very strong - weight it heavily
+                final_confidence = text_confidence * 0.3 + image_confidence * 0.7
+            elif image_confidence > 0.0:
+                # We have some image match - balanced weighting
+                final_confidence = text_confidence * 0.6 + image_confidence * 0.4
+            else:
+                # No image match - use text only
+                final_confidence = text_confidence
+
+            confidence_scores[item.item_id] = final_confidence
+
+            # Log the confidence breakdown for debugging
+            logger.debug(
+                f"Item {item.item_id} confidence - Text: {text_confidence:.2f}, "
+                f"Image: {image_confidence:.2f}, Final: {final_confidence:.2f}"
+            )
 
         return confidence_scores
 
     def _recalculate_confidence_with_attachments(self, order: ExtractedOrder) -> float:
         """Recalculate confidence after processing attachments"""
         confidence = order.extraction_confidence
-        
+
         # Boost confidence if we have successfully processed attachments
         if order.attachments:
-            processed_count = sum(1 for att in order.attachments 
-                                 if att.extracted_data and "error" not in att.extracted_data)
+            processed_count = sum(
+                1
+                for att in order.attachments
+                if att.extracted_data and "error" not in att.extracted_data
+            )
             if processed_count > 0:
                 # Increase confidence by 10% for each successfully processed attachment
                 confidence = min(1.0, confidence + (0.1 * processed_count))
-                
+
                 # If we extracted items from Excel, boost confidence significantly
                 for att in order.attachments:
                     if att.type == AttachmentType.EXCEL and att.extracted_data:
                         if "data" in att.extracted_data and att.extracted_data["data"]:
                             confidence = min(1.0, confidence + 0.2)
                             break
-        
+
         return confidence
-    
+
     def _calculate_extraction_confidence(self, extracted_data: Dict[str, Any]) -> float:
         """Calculate confidence based on extraction completeness"""
 
@@ -890,7 +1286,7 @@ class OrderProcessorAgent:
     async def _request_human_review(
         self, order: ExtractedOrder, inventory_matches: List[Dict[str, Any]]
     ):
-        """Request human review for medium confidence orders"""
+        """Mark order for human review - actual review creation is handled by orchestrator"""
 
         # Calculate overall confidence for better context
         item_scores = [
@@ -909,70 +1305,16 @@ class OrderProcessorAgent:
         else:
             review_reason = f"High confidence ({overall_confidence:.1%}) - Final approval needed before processing"
 
-        # Create review request
-        HumanReviewRequest(
-            order_id=order.order_id,
-            order=order,
-            review_reason=review_reason,
-            confidence_score=overall_confidence * 100,  # Convert to percentage
-            suggested_matches=inventory_matches[:10],  # Top 10 matches
-            clarification_needed=[
-                f"Verify {item.tag_specification.tag_code} (match: {item.inventory_match_score:.1%})"
-                for item in order.items
-                if item.inventory_match_score and item.inventory_match_score < 0.9
-            ],
-            priority=(
-                OrderPriority.HIGH
-                if order.delivery.urgency == OrderPriority.URGENT
-                else OrderPriority.MEDIUM
-            ),
-        )
-
-        # Submit to human interaction manager
-        if self.human_manager:
-            # Prepare email data as dict
-            email_data_dict = {
-                "message_id": order.order_id,
-                "from": order.customer.email,
-                "subject": order.email_subject,
-                "body": f"Order from {order.customer.company_name}",
-            }
-
-            # Prepare search results as list
-            search_results_list = []
-            for match in inventory_matches[:5]:
-                search_results_list.append(
-                    {
-                        "item_id": match.get("item_id", ""),
-                        "tag_code": match.get("tag_code", ""),
-                        "confidence": match.get("confidence", 0),
-                        "metadata": match.get("metadata", {}),
-                    }
-                )
-
-            # Prepare extracted items as list
-            extracted_items_list = []
-            for item in order.items[:5]:
-                extracted_items_list.append(
-                    {
-                        "item_id": item.item_id,
-                        "tag_code": item.tag_specification.tag_code,
-                        "quantity": item.quantity_ordered,
-                        "tag_type": item.tag_specification.tag_type.value,
-                    }
-                )
-
-            await self.human_manager.create_review_request(
-                email_data=email_data_dict,
-                search_results=search_results_list,
-                confidence_score=overall_confidence,
-                extracted_items=extracted_items_list,
-            )
-
-        # Update order status
+        # Just update order status - don't create review request
+        # The orchestrator will handle the actual review creation
         order.approval_status = "pending_review"
 
-        logger.info(f"Submitted order {order.order_id} for human review")
+        # Store review metadata in the order for the orchestrator to use
+        order.review_notes = review_reason
+
+        logger.info(
+            f"Marked order {order.order_id} for human review (confidence: {overall_confidence:.1%})"
+        )
 
     async def _request_clarification(self, order: ExtractedOrder):
         """Request clarification for low confidence orders"""

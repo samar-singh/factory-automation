@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 # Google Generative AI for Gemini embeddings
 try:
     import google.generativeai as genai
+
     GEMINI_AVAILABLE = True
 except ImportError:
     GEMINI_AVAILABLE = False
@@ -73,7 +74,12 @@ class EmbeddingsManager:
         },
     }
 
-    def __init__(self, model_name: str = "stella-400m", device: str = "cpu", google_api_key: Optional[str] = None):
+    def __init__(
+        self,
+        model_name: str = "stella-400m",
+        device: str = "cpu",
+        google_api_key: Optional[str] = None,
+    ):
         """Initialize embeddings manager
 
         Args:
@@ -97,18 +103,28 @@ class EmbeddingsManager:
         # Initialize based on provider
         if self.model_config.get("provider") == "google":
             if not GEMINI_AVAILABLE:
-                raise ImportError("Google Generative AI library not installed. Run: pip install google-generativeai")
-            
+                raise ImportError(
+                    "Google Generative AI library not installed. Run: pip install google-generativeai"
+                )
+
             # Get API key from parameter or environment
-            api_key = google_api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+            api_key = (
+                google_api_key
+                or os.getenv("GOOGLE_API_KEY")
+                or os.getenv("GEMINI_API_KEY")
+            )
             if not api_key:
-                raise ValueError("Google API key required for Gemini embeddings. Set GOOGLE_API_KEY or GEMINI_API_KEY env var.")
-            
+                raise ValueError(
+                    "Google API key required for Gemini embeddings. Set GOOGLE_API_KEY or GEMINI_API_KEY env var."
+                )
+
             # Configure Gemini
             genai.configure(api_key=api_key)
             self.gemini_model = genai.GenerativeModel(self.model_config["name"])
-            logger.info(f"Initialized Gemini embeddings model: {self.model_config['name']}")
-            
+            logger.info(
+                f"Initialized Gemini embeddings model: {self.model_config['name']}"
+            )
+
         else:  # HuggingFace models
             # Special handling for Stella model on CPU
             if model_name == "stella-400m" and device == "cpu":
@@ -130,11 +146,11 @@ class EmbeddingsManager:
 
     def encode_queries(self, queries: List[str], batch_size: int = 32) -> np.ndarray:
         """Encode queries with appropriate prompts"""
-        
+
         # Handle Gemini embeddings
         if self.model_name == "gemini":
             return self._encode_with_gemini(queries, task_type="RETRIEVAL_QUERY")
-        
+
         # E5 models need query prefix
         if "e5" in self.model_name:
             queries = [f"query: {q}" for q in queries]
@@ -163,7 +179,7 @@ class EmbeddingsManager:
         self, documents: List[str], batch_size: int = 32
     ) -> np.ndarray:
         """Encode documents (inventory items)"""
-        
+
         # Handle Gemini embeddings
         if self.model_name == "gemini":
             return self._encode_with_gemini(documents, task_type="RETRIEVAL_DOCUMENT")
@@ -175,38 +191,42 @@ class EmbeddingsManager:
         return self.model.encode(
             documents, batch_size=batch_size, normalize_embeddings=True
         )
-    
-    def _encode_with_gemini(self, texts: List[str], task_type: str = "RETRIEVAL_DOCUMENT") -> np.ndarray:
+
+    def _encode_with_gemini(
+        self, texts: List[str], task_type: str = "RETRIEVAL_DOCUMENT"
+    ) -> np.ndarray:
         """Encode texts using Google Gemini embeddings
-        
+
         Args:
             texts: List of texts to encode
             task_type: One of ["RETRIEVAL_QUERY", "RETRIEVAL_DOCUMENT", "SEMANTIC_SIMILARITY", "CLASSIFICATION", "CLUSTERING"]
         """
         embeddings = []
-        
+
         for text in texts:
             try:
                 result = genai.embed_content(
                     model=self.model_config["name"],
                     content=text,
                     task_type=task_type,
-                    title="Tag Inventory" if task_type == "RETRIEVAL_DOCUMENT" else None
+                    title=(
+                        "Tag Inventory" if task_type == "RETRIEVAL_DOCUMENT" else None
+                    ),
                 )
-                embeddings.append(result['embedding'])
+                embeddings.append(result["embedding"])
             except Exception as e:
                 logger.error(f"Error encoding with Gemini: {e}")
                 # Return zero vector on error
                 embeddings.append([0.0] * self.model_config["dimensions"])
-        
+
         # Convert to numpy array and normalize
         embeddings = np.array(embeddings)
-        
+
         # Normalize embeddings
         norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
         norms[norms == 0] = 1  # Avoid division by zero
         embeddings = embeddings / norms
-        
+
         return embeddings
 
     def get_dimensions(self) -> int:

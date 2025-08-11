@@ -20,7 +20,15 @@ class ExcelInventoryIngestion:
 
     # Column mappings to handle variations across Excel files
     COLUMN_MAPPINGS = {
-        "code": ["TRIM CODE", "TRIMCODE", "CODE", "ITEM CODE", "SL.NO", "TAG CODE", "S.NO"],
+        "code": [
+            "TRIM CODE",
+            "TRIMCODE",
+            "CODE",
+            "ITEM CODE",
+            "SL.NO",
+            "TAG CODE",
+            "S.NO",
+        ],
         "name": [
             "TRIM NAME",
             "TAG NAME",
