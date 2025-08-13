@@ -42,70 +42,114 @@ class OrchestratorWithHuman(AgenticOrchestratorV3):
         # Create review request tool
         @function_tool(
             name_override="create_human_review",
-            description_override="Create a review request for manual approval when confidence is 60-80%",
+            description_override="Create a review request for manual approval based on order processing results",
         )
         async def create_human_review(
-            email_data: str,
-            search_results: str,
-            confidence_score: float,
-            extracted_items: str,
+            order_id: str,
+            review_reason: str,
         ) -> str:
-            """Create human review request"""
+            """Create human review request using data from last processed order"""
 
-            import json
 
-            # Parse inputs - handle both string and dict/list inputs
+            # Get the last order result from the orchestrator
+            if not hasattr(self, '_last_order_result') or self._last_order_result is None:
+                return "Error: No order has been processed yet. Call process_complete_order first."
+            
+            result = self._last_order_result
+            
+            # Verify this is the correct order
+            if result.get('order_id') != order_id:
+                return f"Error: Order ID mismatch. Expected {result.get('order_id')}, got {order_id}"
+            
+            # Check if review is needed
+            if not result.get('needs_review'):
+                return f"Order {order_id} does not need review according to process_complete_order"
+            
+            # Extract data from the order result
             try:
-                # Handle email_data
-                if isinstance(email_data, dict):
-                    email_dict = email_data
-                elif isinstance(email_data, str) and email_data.strip():
-                    email_dict = json.loads(email_data)
-                else:
-                    email_dict = {}
-
-                # Handle search_results
-                if isinstance(search_results, list):
-                    results_list = search_results
-                elif isinstance(search_results, str) and search_results.strip():
-                    results_list = json.loads(search_results)
+                # Debug logging
+                logger.info(f"Order result keys: {list(result.keys())}")
+                logger.info(f"confidence_scores type: {type(result.get('confidence_scores'))}, value: {result.get('confidence_scores')}")
+                
+                # Prepare email data
+                email_dict = {
+                    "subject": getattr(self, '_current_email_subject', 'Order Request'),
+                    "from": result.get('customer', 'unknown@example.com'),
+                    "body": getattr(self, '_current_email_body', '')[:500],
+                    "order_id": order_id,
+                }
+                
+                # Get search results (inventory matches)
+                inventory_matches = result.get('inventory_matches')
+                if inventory_matches is None:
+                    results_list = []
+                elif isinstance(inventory_matches, list):
+                    results_list = inventory_matches[:10]
+                elif isinstance(inventory_matches, int):
+                    # Sometimes it's just a count
+                    results_list = []
+                    logger.info(f"inventory_matches is a count: {inventory_matches}")
                 else:
                     results_list = []
-
-                # Handle extracted_items
-                if isinstance(extracted_items, list):
+                    logger.warning(f"inventory_matches unexpected type: {type(inventory_matches)}")
+                
+                # Get extracted items  
+                extracted_items = result.get('extracted_items_for_review')
+                if extracted_items is None:
+                    items_list = []
+                elif isinstance(extracted_items, list):
                     items_list = extracted_items
-                elif isinstance(extracted_items, str) and extracted_items.strip():
-                    items_list = json.loads(extracted_items)
                 else:
                     items_list = []
-
-            except json.JSONDecodeError as e:
-                logger.error(f"Error parsing review inputs - JSON decode error: {e}")
-                logger.debug(
-                    f"email_data type: {type(email_data)}, value: {email_data}"
-                )
-                logger.debug(
-                    f"search_results type: {type(search_results)}, value: {search_results}"
-                )
-                logger.debug(
-                    f"extracted_items type: {type(extracted_items)}, value: {extracted_items}"
-                )
-                return f"Error: Failed to parse inputs - {str(e)}"
+                    logger.warning(f"extracted_items_for_review is not a list: {type(extracted_items)}")
+                logger.info(f"items_list type: {type(items_list)}, length: {len(items_list) if isinstance(items_list, list) else 'N/A'}")
+                
+                # Get confidence score
+                confidence_score = 0.0
+                if result.get('confidence_scores'):
+                    scores = result['confidence_scores']
+                    if isinstance(scores, dict):
+                        # Dict with item_id as keys and confidence as values
+                        if 'average' in scores:
+                            avg_score = scores['average']
+                        elif scores:
+                            # Calculate average from dict values
+                            score_values = [v for v in scores.values() if isinstance(v, (int, float))]
+                            avg_score = sum(score_values) / len(score_values) if score_values else 0
+                        else:
+                            avg_score = 0
+                    elif isinstance(scores, list):
+                        avg_score = sum(scores) / len(scores) if scores else 0
+                    elif isinstance(scores, (int, float)):
+                        avg_score = float(scores)
+                    else:
+                        # Try to get extraction_confidence as fallback
+                        avg_score = result.get('extraction_confidence', 0)
+                    confidence_score = avg_score
+                elif result.get('extraction_confidence'):
+                    confidence_score = result['extraction_confidence']
+                
+                logger.info(f"Creating review for order {order_id} with confidence {confidence_score:.2%}")
+                
             except Exception as e:
-                logger.error(f"Error parsing review inputs - unexpected error: {e}")
-                return f"Error: Failed to parse inputs - {str(e)}"
+                logger.error(f"Error extracting data from order result: {e}")
+                return f"Error: Failed to extract order data - {str(e)}"
 
             # Create review request
+            # Ensure lists are actually lists
+            if not isinstance(results_list, list):
+                logger.warning(f"results_list is not a list: {type(results_list)}, value: {results_list}")
+                results_list = []
+            
+            if not isinstance(items_list, list):
+                logger.warning(f"items_list is not a list: {type(items_list)}, value: {items_list}")
+                items_list = []
+            
             review = await self.human_manager.create_review_request(
                 email_data=email_dict,
-                search_results=(
-                    results_list if isinstance(results_list, list) else [results_list]
-                ),
+                search_results=results_list,
                 confidence_score=confidence_score,
-                extracted_items=(
-                    items_list if isinstance(items_list, list) else [items_list]
-                ),
+                extracted_items=items_list,
             )
 
             return f"Created review request {review.request_id} with {review.priority.value} priority. Status: {review.status.value}"
@@ -203,8 +247,22 @@ class OrchestratorWithHuman(AgenticOrchestratorV3):
 
             if review.status.value == "approved":
                 action_taken = "Proceed with order processing and quotation generation"
+                # Learn from the approval - the AI's classification was correct
+                if hasattr(review, 'classification') and review.classification:
+                    await self.learn_from_feedback(
+                        email_id=request_id,
+                        actual_intent=review.classification,
+                        was_correct=True
+                    )
             elif review.status.value == "rejected":
                 action_taken = "Send rejection email to customer with reason"
+                # Learn from rejection - the AI may have been wrong
+                if hasattr(review, 'classification') and review.classification:
+                    await self.learn_from_feedback(
+                        email_id=request_id,
+                        actual_intent=review.classification,
+                        was_correct=False
+                    )
             elif review.status.value == "alternative_suggested":
                 action_taken = f"Send alternative suggestions to customer: {len(review.alternative_items)} items"
 
@@ -237,53 +295,56 @@ Your responsibilities:
 1. Monitor and process incoming order emails
 2. Extract order details from emails and attachments
 3. Search inventory for matching products
-4. Make approval decisions based on match quality
-5. Create human review requests when confidence is medium
+4. DECIDE on approval actions based on confidence and context
+5. CREATE human review requests when YOU determine they're needed
 6. Generate quotations and confirmations
 7. Track payments and update order status
 
 Available tools:
-- process_complete_order: Process complete order with extraction, search, and routing
+- process_complete_order: Analyzes orders and returns confidence scores (does NOT create reviews)
+- create_human_review: Create review request when YOU decide it's needed
 - process_tag_image: Analyze tag images with Qwen2.5VL
 - search_inventory: Semantic search in ChromaDB
 - search_visual: Visual similarity search
 - get_customer_context: Retrieve historical data
 - generate_document: Create quotations/confirmations
 - update_order_status: Update order in database
-- create_human_review: Create manual review request (USE THIS when confidence 60-80%)
 - check_review_status: Check status of specific review
 - get_pending_reviews: List all pending reviews
 - process_review_decision: Handle completed review decision
 
-CRITICAL Decision Rules:
-1. When ANY item has similarity score below 90%:
-   - MUST use create_human_review tool
-   - Include all search results for human review
-   - Human will decide to: Approve, Reject, Request Clarification, Suggest Alternatives, or Defer
-   
-2. Only when ALL items have ≥90% similarity:
-   - Auto-approve and generate quotation
-   
-3. Priority setting for human review:
-   - <60% match: HIGH priority (likely needs clarification)
-   - 60-80% match: MEDIUM priority
-   - 80-90% match: LOW priority
-   - Keywords "urgent", "rush", "asap": Always HIGH priority
-   
-4. For the create_human_review tool:
-   - email_data: Pass the original email information as JSON string
-   - search_results: Pass the inventory search results as JSON string
-   - confidence_score: Pass the average confidence score
-   - extracted_items: Pass the extracted order items as JSON string
+Decision Framework:
+1. First, classify the email intent using context-aware classification
+2. For NEW_ORDER intents:
+   a. Call process_complete_order to analyze the order
+   b. Check the response for 'needs_review', 'confidence_scores', and 'recommended_action'
+   c. YOU decide whether to:
+      - Auto-approve (if confidence > 90% for all items)
+      - Create human review (if confidence 60-90% OR special circumstances)
+      - Request clarification (if confidence < 60%)
+   d. If creating review, use the data from process_complete_order response
+3. For other intents, use appropriate tools
 
-Workflow:
-1. Process order email → Extract items → Search inventory
-2. Calculate confidence scores from search results
-3. IF any score <80%: IMMEDIATELY use create_human_review
-4. Monitor pending reviews and process decisions
-5. Generate appropriate documents based on decisions
+Creating Human Reviews:
+When process_complete_order returns 'needs_review': true, YOU must:
+1. Evaluate the confidence scores and business context
+2. Consider factors like:
+   - Customer history
+   - Order urgency
+   - Total order value
+   - Special requirements
+3. If review is warranted, call create_human_review with ONLY:
+   - order_id: The order ID from process_complete_order response
+   - review_reason: A brief explanation of why review is needed
 
-Remember: ALWAYS create human review when confidence is not high (>80% for ALL items)."""
+IMPORTANT: The create_human_review tool automatically uses data from the last processed order.
+Just pass the order_id and reason - DO NOT try to pass JSON data!
+
+Key Points:
+- YOU are the decision maker - process_complete_order only provides data
+- Create reviews based on YOUR judgment, not automatically
+- Consider context beyond just confidence scores
+- One order = one review maximum (check if review already exists)"""
 
     async def _handle_review_notification(self, review_request):
         """Handle notifications for new review requests"""

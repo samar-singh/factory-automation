@@ -127,6 +127,33 @@ business:
   payment_reminder_days: 3
   order_expiry_days: 30
 
+# Business Email Configuration
+business_emails:
+  # Each business email with its purpose and context
+  emails:
+    - address: "trimsblr@yahoo.co.in"
+      description: "Primary email for receiving customer orders for garment tags and labels. Customers send purchase orders, urgent requests, and order modifications here."
+      likely_intents: ["NEW_ORDER", "ORDER_MODIFICATION", "URGENT_ORDER", "INQUIRY"]
+      confidence_boost: 0.1
+      
+    - address: "trimsblr@yahoo.co.in"
+      description: "Sales inquiries, price quotations, and new customer onboarding. Receives requests for catalogs, pricing, and capabilities."
+      likely_intents: ["INQUIRY", "QUOTATION_REQUEST", "NEW_CUSTOMER"]
+      confidence_boost: 0.05
+      
+    - address: "trimsblr@yahoo.co.in"
+      description: "General inquiries and mixed communications. Receives various types of emails that may need routing to other departments."
+      likely_intents: ["INQUIRY", "NEW_ORDER", "FOLLOWUP"]
+      confidence_boost: 0.0
+  
+  # Pattern learning settings
+  pattern_learning:
+    enabled: true
+    min_count_for_pattern: 3  # Minimum emails before using pattern
+    max_confidence: 0.95
+    initial_confidence: 0.6
+    confidence_increment: 0.05
+
 # UI Configuration
 ui:
   theme: default
