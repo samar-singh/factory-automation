@@ -261,28 +261,54 @@ class HumanReviewDashboard:
         .status-rejected { color: #ef4444; }
         .status-in-review { color: #3b82f6; }
         
+        /* Responsive table container */
+        .table-container {
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            margin: 0 -1rem;
+            padding: 0 1rem;
+        }
+        
         /* Inventory match table with dark mode support */
         .match-table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 1rem;
+            table-layout: fixed;
         }
         
         .match-table th {
             background: var(--hover-bg);
-            padding: 0.75rem;
+            padding: 0.5rem;
             text-align: left;
             font-weight: 600;
             color: var(--text-primary) !important;
             border-bottom: 2px solid var(--border-color);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         
         .match-table td {
-            padding: 0.75rem;
+            padding: 0.5rem;
             border-bottom: 1px solid var(--border-color);
             vertical-align: middle;
             color: var(--text-primary) !important;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
+        
+        /* Responsive column widths */
+        .match-table th:nth-child(1), .match-table td:nth-child(1) { width: 5%; }  /* Select */
+        .match-table th:nth-child(2), .match-table td:nth-child(2) { width: 10%; } /* Image */
+        .match-table th:nth-child(3), .match-table td:nth-child(3) { width: 12%; } /* Tag Code */
+        .match-table th:nth-child(4), .match-table td:nth-child(4) { width: 18%; } /* Name */
+        .match-table th:nth-child(5), .match-table td:nth-child(5) { width: 10%; } /* Brand */
+        .match-table th:nth-child(6), .match-table td:nth-child(6) { width: 8%; }  /* Type */
+        .match-table th:nth-child(7), .match-table td:nth-child(7) { width: 12%; } /* Confidence */
+        .match-table th:nth-child(8), .match-table td:nth-child(8) { width: 10%; } /* Status */
+        .match-table th:nth-child(9), .match-table td:nth-child(9) { width: 15%; } /* Source */
         
         .match-table tr:hover {
             background: var(--hover-bg);
@@ -299,19 +325,43 @@ class HumanReviewDashboard:
             }
         }
         
+        /* Make table responsive on smaller screens */
+        @media (max-width: 1200px) {
+            .match-table {
+                font-size: 0.875rem;
+            }
+            .match-table th, .match-table td {
+                padding: 0.4rem;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .table-container {
+                margin: 0;
+                padding: 0;
+            }
+            .match-table {
+                font-size: 0.75rem;
+            }
+            .match-table th, .match-table td {
+                padding: 0.25rem;
+            }
+        }
+        
         .match-image {
-            width: 80px;
-            height: 80px;
-            object-fit: contain;
+            width: 60px;
+            height: 60px;
+            object-fit: cover;
             border-radius: 4px;
-            border: 1px solid #e5e7eb;
+            border: 2px solid transparent;
             cursor: pointer;
-            transition: transform 0.2s;
+            transition: all 0.2s;
         }
         
         .match-image:hover {
             transform: scale(1.05);
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border: 2px solid #3b82f6;
         }
         
         .confidence-badge {
@@ -1042,21 +1092,21 @@ class HumanReviewDashboard:
                         <!-- Removed debug panel and buttons for production -->
                         """
 
-                        # Add the table with proper styling
+                        # Add the table with proper responsive container
                         matches_html += """
-                        <div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
-                        <table class="match-table" style="width: 100%; min-width: 700px; background: var(--card-bg);">
+                        <div class="table-container">
+                        <table class="match-table">
                             <thead>
                                 <tr>
-                                    <th style="width:60px; text-align:center; color: var(--text-primary);">Select</th>
-                                    <th style="width:100px; text-align:center; color: var(--text-primary);">Image</th>
-                                    <th style="min-width:120px; color: var(--text-primary);">Tag Code</th>
-                                    <th style="min-width:150px; color: var(--text-primary);">Name</th>
-                                    <th style="min-width:100px; color: var(--text-primary);">Brand</th>
-                                    <th style="width:80px; color: var(--text-primary);">Type</th>
-                                    <th style="width:120px; color: var(--text-primary);">Confidence</th>
-                                    <th style="width:100px; color: var(--text-primary);">Status</th>
-                                    <th style="min-width:180px; color: var(--text-primary);">Source Document</th>
+                                    <th>Select</th>
+                                    <th>Image</th>
+                                    <th>Tag Code</th>
+                                    <th>Name</th>
+                                    <th>Brand</th>
+                                    <th>Type</th>
+                                    <th>Confidence</th>
+                                    <th>Status</th>
+                                    <th>Source</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1201,57 +1251,51 @@ class HumanReviewDashboard:
                             selected_class = "selected-match" if i == 0 else ""
                             checked = "checked" if i == 0 else ""
 
-                            # Escape the image URL for JavaScript by storing it in a data attribute
+                            # Simplify table row for better responsiveness
                             matches_html += f"""
                             <tr id="match-row-{match_id}" class="{selected_class}">
                                 <td style="text-align: center;">
                                     <input type="radio" name="match-selection" class="match-radio" 
-                                           value="{match_id}" onclick="selectMatch('{match_id}')" {checked}
-                                           style="width: 18px; height: 18px; cursor: pointer; accent-color: #2563eb;">
+                                           value="{match_id}" onclick="selectMatch('{match_id}')" {checked}>
                                 </td>
-                                <td>
+                                <td style="text-align: center;">
                                     <img src="{image_url}" 
                                          class="match-image clickable-image" 
                                          alt="{tag_code}" 
                                          id="img-{match_id}"
                                          data-tag-code="{tag_code}"
-                                         title="Click to enlarge - {tag_code}" 
-                                         style="cursor: pointer; border: 2px solid transparent; transition: all 0.3s ease;" 
-                                         onmouseover="this.style.border='2px solid #3b82f6'; this.style.transform='scale(1.05)';" 
-                                         onmouseout="this.style.border='2px solid transparent'; this.style.transform='scale(1)';" 
+                                         title="Click to enlarge" 
+                                         style="width: 60px; height: 60px; object-fit: cover; cursor: pointer; border-radius: 4px;" 
                                          onclick="(function(e) {{ 
                                              e.stopPropagation(); 
                                              e.preventDefault(); 
-                                             console.log('Image clicked directly: {tag_code}'); 
                                              var imgSrc = this.src; 
-                                             var tagCode = this.getAttribute('data-tag-code') || '{tag_code}'; 
+                                             var tagCode = '{tag_code}'; 
                                              if (typeof window.showImageModal === 'function') {{ 
-                                                 console.log('Calling showImageModal with:', tagCode); 
                                                  window.showImageModal(imgSrc, tagCode); 
-                                             }} else {{ 
-                                                 console.error('showImageModal function not available:', typeof window.showImageModal); 
-                                                 alert('Image zoom feature not available. Function type: ' + typeof window.showImageModal); 
                                              }} 
                                              return false; 
                                          }})(event)" />
                                 </td>
-                                <td><strong style="color: var(--text-primary); font-family: monospace;">{tag_code or "N/A"}</strong></td>
-                                <td style="color: var(--text-primary);">{match.get("name", "N/A")[:30]}{'...' if len(match.get("name", "")) > 30 else ''}</td>
-                                <td style="color: var(--text-primary);">{match.get("brand", match.get('metadata', {}).get('brand', "N/A"))}</td>
-                                <td style="color: var(--text-primary);">{match.get("tag_type", match.get('metadata', {}).get('tag_type', "N/A"))}</td>
+                                <td><strong style="font-family: monospace; font-size: 0.9em;">{tag_code or "N/A"}</strong></td>
+                                <td title="{match.get('name', 'N/A')}">{match.get("name", "N/A")[:20]}{'...' if len(match.get("name", "")) > 20 else ''}</td>
+                                <td>{match.get("brand", match.get('metadata', {}).get('brand', "N/A"))[:10]}</td>
+                                <td>{match.get("tag_type", match.get('metadata', {}).get('tag_type', "N/A"))[:8]}</td>
                                 <td>
-                                    <div class="confidence-bar" style="display: inline-block; width: 60px; background: #e5e7eb; border-radius: 10px; height: 20px; vertical-align: middle; margin-right: 8px;">
-                                        <div class="confidence-fill confidence-{conf_class}" style="width:{confidence*100}%; height: 100%; border-radius: 10px; background: {'#10b981' if confidence > 0.8 else '#f59e0b' if confidence > 0.6 else '#ef4444'};"></div>
+                                    <div style="display: flex; align-items: center; gap: 4px;">
+                                        <div style="width: 40px; background: #e5e7eb; border-radius: 8px; height: 16px;">
+                                            <div style="width:{confidence*100}%; height: 100%; border-radius: 8px; background: {'#10b981' if confidence > 0.8 else '#f59e0b' if confidence > 0.6 else '#ef4444'};"></div>
+                                        </div>
+                                        <span style="font-weight: 600; color: {'#059669' if confidence > 0.8 else '#d97706' if confidence > 0.6 else '#dc2626'}; font-size: 0.85em;">
+                                            {confidence:.0%}
+                                        </span>
                                     </div>
-                                    <span style="font-weight: 700; color: {'#059669' if confidence > 0.8 else '#d97706' if confidence > 0.6 else '#dc2626'};">
-                                        {confidence:.0%}
-                                    </span>
                                 </td>
-                                <td style="font-size: 13px; font-weight: 600; color: {'#dc2626' if confidence < 0.6 else '#f59e0b' if confidence < 0.8 else '#059669'};">
-                                    {'Low Conf' if confidence < 0.6 else 'Medium' if confidence < 0.8 else 'Good'}
+                                <td style="font-weight: 600; color: {'#dc2626' if confidence < 0.6 else '#f59e0b' if confidence < 0.8 else '#059669'}; font-size: 0.85em;">
+                                    {'Low' if confidence < 0.6 else 'Med' if confidence < 0.8 else 'Good'}
                                 </td>
-                                <td class="source-doc" style="font-size: 12px; color: var(--text-primary); max-width: 200px; word-wrap: break-word;" title="{source_doc}">
-                                    {source_doc}
+                                <td title="{source_doc}" style="font-size: 0.75em;">
+                                    {source_doc[:15]}{'...' if len(source_doc) > 15 else ''}
                                 </td>
                             </tr>
                             """
