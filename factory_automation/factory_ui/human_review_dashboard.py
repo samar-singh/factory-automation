@@ -502,11 +502,11 @@ class HumanReviewDashboard:
             selected_match_id = gr.State(value=None)
 
             with gr.Row():
-                # Left Panel: Queue List (35% width)
-                with gr.Column(scale=35):
+                # Left Panel: Queue List (25% width - more compact)
+                with gr.Column(scale=25):
                     with gr.Row():
-                        gr.Markdown("### 📋 Review Queue")
-                        queue_count = gr.Markdown("0 pending items")
+                        gr.Markdown("### 📋 Queue")
+                        queue_count = gr.Markdown("0 items")
 
                     # Filters and controls
                     with gr.Row():
@@ -534,34 +534,21 @@ class HumanReviewDashboard:
                     queue_table = gr.Dataframe(
                         headers=[
                             "Customer",
-                            "Type",
                             "Priority",
-                            "Confidence",
+                            "Conf%",
                             "Age",
-                            "Select",
                         ],
-                        label="Click any row to view details",
+                        label="Click row for details",
                         interactive=False,  # Prevent editing/adding columns
                         wrap=True,
-                        datatype=["str", "str", "str", "str", "str", "bool"],
+                        datatype=["str", "str", "str", "str"],
+                        max_height=400,  # Fixed height for compact display
                     )
 
-                    # Batch controls
-                    with gr.Row():
-                        batch_btn = gr.Button(
-                            "📦 Process (0)",
-                            variant="primary",
-                            interactive=False,  # Disabled until items selected
-                        )
-                        clear_btn = gr.Button(
-                            "🗑️ Clear Selection", variant="secondary", interactive=False
-                        )
+                    # No batch controls - simpler single item processing
 
-                    # Batch processing result message
-                    batch_result = gr.Markdown("", visible=False)
-
-                # Right Panel: Details View (65% width)
-                with gr.Column(scale=65):
+                # Right Panel: Details View (75% width - more space for content)
+                with gr.Column(scale=75):
                     # Details header
                     gr.Markdown("### 📄 Recommendation Details")
 
@@ -674,21 +661,19 @@ class HumanReviewDashboard:
                         else:
                             age_str = f"{age.seconds // 60}m ago"
 
-                        # Format row
+                        # Format row - simplified for compact display
                         queue_data.append(
                             [
-                                rec["customer_email"][:30],  # Truncate long emails
-                                rec["recommendation_type"].replace("_", " ").title(),
-                                rec["priority"],
+                                rec["customer_email"][:20],  # Truncate long emails
+                                rec["priority"].upper(),
                                 f"{rec['confidence_score']:.0%}",
                                 age_str,
-                                False,  # Checkbox
                             ]
                         )
 
                     # Cache full data for details
                     self.recommendation_cache = {
-                        rec["customer_email"][:30]: rec for rec in recommendations
+                        rec["customer_email"][:20]: rec for rec in recommendations
                     }
 
                     # Calculate metrics
@@ -705,17 +690,15 @@ class HumanReviewDashboard:
                     # Update UI
                     return (
                         queue_data,
-                        f"{total} pending items",
+                        f"{total} items",
                         total,
                         urgent,
                         avg_conf,
-                        gr.update(interactive=False),  # batch_btn - disabled initially
-                        gr.update(interactive=False),  # clear_btn - disabled initially
                     )
 
                 except Exception as e:
                     logger.error(f"Error refreshing queue: {e}")
-                    return [], "Error loading queue", 0, 0, 0, gr.update(), gr.update()
+                    return [], "Error", 0, 0, 0
 
             def on_row_select(evt: gr.SelectData, table_data):
                 """Handle row selection to show details"""
@@ -1756,8 +1739,6 @@ class HumanReviewDashboard:
                     pending_count,
                     urgent_count,
                     avg_confidence,
-                    batch_btn,
-                    clear_btn,
                 ],
             )
 
@@ -1781,36 +1762,9 @@ class HumanReviewDashboard:
                 ],
             )
 
-            queue_table.change(
-                fn=handle_batch_selection,
-                inputs=[queue_table],
-                outputs=[batch_btn, clear_btn, selected_items],
-            )
+            # No batch processing - removed
 
-            clear_btn.click(
-                fn=clear_selection,
-                inputs=[queue_table],
-                outputs=[queue_table, batch_btn, clear_btn],
-            )
-
-            # Add batch processing button handler
-            batch_btn.click(
-                fn=process_selected_batch,
-                inputs=[selected_items, selected_match_id],
-                outputs=[batch_result],
-            ).then(fn=lambda: gr.update(visible=True), outputs=[batch_result]).then(
-                fn=refresh_queue,
-                inputs=[priority_filter],
-                outputs=[
-                    queue_table,
-                    queue_count,
-                    pending_count,
-                    urgent_count,
-                    avg_confidence,
-                    batch_btn,
-                    clear_btn,
-                ],
-            )
+            # Batch processing removed for simpler interface
 
             approve_btn.click(
                 fn=lambda qid, notes: process_decision(qid, "approve", notes),
@@ -1825,8 +1779,6 @@ class HumanReviewDashboard:
                     pending_count,
                     urgent_count,
                     avg_confidence,
-                    batch_btn,
-                    clear_btn,
                 ],
             )
 
@@ -1843,8 +1795,6 @@ class HumanReviewDashboard:
                     pending_count,
                     urgent_count,
                     avg_confidence,
-                    batch_btn,
-                    clear_btn,
                 ],
             )
 
@@ -1861,8 +1811,6 @@ class HumanReviewDashboard:
                     pending_count,
                     urgent_count,
                     avg_confidence,
-                    batch_btn,
-                    clear_btn,
                 ],
             )
             
@@ -1879,8 +1827,6 @@ class HumanReviewDashboard:
                     pending_count,
                     urgent_count,
                     avg_confidence,
-                    batch_btn,
-                    clear_btn,
                 ],
             )
             
@@ -1897,8 +1843,6 @@ class HumanReviewDashboard:
                     pending_count,
                     urgent_count,
                     avg_confidence,
-                    batch_btn,
-                    clear_btn,
                 ],
             )
 
@@ -1912,8 +1856,6 @@ class HumanReviewDashboard:
                     pending_count,
                     urgent_count,
                     avg_confidence,
-                    batch_btn,
-                    clear_btn,
                 ],
             )
 
