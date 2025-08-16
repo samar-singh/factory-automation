@@ -444,7 +444,7 @@ class HumanReviewDashboard:
                             label="Avg Confidence", value=0, interactive=False
                         )
 
-                    # Queue table
+                    # Queue table - Make it read-only to prevent editing
                     queue_table = gr.Dataframe(
                         headers=[
                             "Customer",
@@ -455,7 +455,7 @@ class HumanReviewDashboard:
                             "Select",
                         ],
                         label="Click any row to view details",
-                        interactive=True,
+                        interactive=False,  # Prevent editing/adding columns
                         wrap=True,
                         datatype=["str", "str", "str", "str", "str", "bool"],
                     )
