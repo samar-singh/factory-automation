@@ -80,8 +80,31 @@ class HumanReviewDashboard:
     def create_interface(self) -> gr.Blocks:
         """Create the main dashboard interface with modern design"""
 
-        # Custom CSS for modern, clean styling
+        # Custom CSS for modern, clean styling with dark mode support
         custom_css = """
+        /* CSS Variables for automatic light/dark mode */
+        :root {
+            --bg-primary: white;
+            --bg-secondary: #f9fafb;
+            --text-primary: #111827;
+            --text-secondary: #6b7280;
+            --border-color: #e5e7eb;
+            --card-bg: white;
+            --hover-bg: #f3f4f6;
+        }
+        
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-primary: #1f2937;
+                --bg-secondary: #111827;
+                --text-primary: #f9fafb;
+                --text-secondary: #9ca3af;
+                --border-color: #4b5563;
+                --card-bg: #1f2937;
+                --hover-bg: #374151;
+            }
+        }
+        
         /* Radio button styling for better visibility */
         input[type="radio"] {
             width: 18px !important;
@@ -101,18 +124,23 @@ class HumanReviewDashboard:
         
         /* Modern card-based design */
         .card {
-            background: white;
+            background: var(--card-bg);
             border-radius: 8px;
             padding: 1.5rem;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
             margin-bottom: 1rem;
+            border: 1px solid var(--border-color);
+        }
+        
+        .card * {
+            color: var(--text-primary);
         }
         
         .info-row {
             display: flex;
             justify-content: space-between;
             padding: 0.75rem 0;
-            border-bottom: 1px solid #f0f0f0;
+            border-bottom: 1px solid var(--border-color);
         }
         
         .info-row:last-child {
@@ -120,12 +148,12 @@ class HumanReviewDashboard:
         }
         
         .label {
-            color: #6b7280;
+            color: var(--text-secondary) !important;
             font-weight: 500;
         }
         
         .value {
-            color: #111827;
+            color: var(--text-primary) !important;
             font-weight: 600;
         }
         
@@ -233,7 +261,7 @@ class HumanReviewDashboard:
         .status-rejected { color: #ef4444; }
         .status-in-review { color: #3b82f6; }
         
-        /* Inventory match table */
+        /* Inventory match table with dark mode support */
         .match-table {
             width: 100%;
             border-collapse: collapse;
@@ -241,27 +269,34 @@ class HumanReviewDashboard:
         }
         
         .match-table th {
-            background: #f3f4f6;
+            background: var(--hover-bg);
             padding: 0.75rem;
             text-align: left;
             font-weight: 600;
-            color: #374151;
-            border-bottom: 2px solid #e5e7eb;
+            color: var(--text-primary) !important;
+            border-bottom: 2px solid var(--border-color);
         }
         
         .match-table td {
             padding: 0.75rem;
-            border-bottom: 1px solid #e5e7eb;
+            border-bottom: 1px solid var(--border-color);
             vertical-align: middle;
+            color: var(--text-primary) !important;
         }
         
         .match-table tr:hover {
-            background: #f9fafb;
+            background: var(--hover-bg);
         }
         
         .match-table tr.selected-match {
             background: #eff6ff !important;
             border-left: 3px solid #3b82f6;
+        }
+        
+        @media (prefers-color-scheme: dark) {
+            .match-table tr.selected-match {
+                background: #1e3a8a !important;
+            }
         }
         
         .match-image {
@@ -1010,18 +1045,18 @@ class HumanReviewDashboard:
                         # Add the table with proper styling
                         matches_html += """
                         <div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
-                        <table class="match-table" style="width: 100%; min-width: 700px;">
+                        <table class="match-table" style="width: 100%; min-width: 700px; background: var(--card-bg);">
                             <thead>
                                 <tr>
-                                    <th style="width:60px; text-align:center;">Select</th>
-                                    <th style="width:100px; text-align:center;">Image</th>
-                                    <th style="min-width:120px;">Tag Code</th>
-                                    <th style="min-width:150px;">Name</th>
-                                    <th style="min-width:100px;">Brand</th>
-                                    <th style="width:80px;">Type</th>
-                                    <th style="width:120px;">Confidence</th>
-                                    <th style="width:100px;">Status</th>
-                                    <th style="min-width:180px;">Source Document</th>
+                                    <th style="width:60px; text-align:center; color: var(--text-primary);">Select</th>
+                                    <th style="width:100px; text-align:center; color: var(--text-primary);">Image</th>
+                                    <th style="min-width:120px; color: var(--text-primary);">Tag Code</th>
+                                    <th style="min-width:150px; color: var(--text-primary);">Name</th>
+                                    <th style="min-width:100px; color: var(--text-primary);">Brand</th>
+                                    <th style="width:80px; color: var(--text-primary);">Type</th>
+                                    <th style="width:120px; color: var(--text-primary);">Confidence</th>
+                                    <th style="width:100px; color: var(--text-primary);">Status</th>
+                                    <th style="min-width:180px; color: var(--text-primary);">Source Document</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1200,10 +1235,10 @@ class HumanReviewDashboard:
                                              return false; 
                                          }})(event)" />
                                 </td>
-                                <td><strong style="color: #2563eb; font-family: monospace;">{tag_code or "N/A"}</strong></td>
-                                <td style="color: #000000;">{match.get("name", "N/A")[:30]}{'...' if len(match.get("name", "")) > 30 else ''}</td>
-                                <td style="color: #000000;">{match.get("brand", match.get('metadata', {}).get('brand', "N/A"))}</td>
-                                <td style="color: #000000;">{match.get("tag_type", match.get('metadata', {}).get('tag_type', "N/A"))}</td>
+                                <td><strong style="color: var(--text-primary); font-family: monospace;">{tag_code or "N/A"}</strong></td>
+                                <td style="color: var(--text-primary);">{match.get("name", "N/A")[:30]}{'...' if len(match.get("name", "")) > 30 else ''}</td>
+                                <td style="color: var(--text-primary);">{match.get("brand", match.get('metadata', {}).get('brand', "N/A"))}</td>
+                                <td style="color: var(--text-primary);">{match.get("tag_type", match.get('metadata', {}).get('tag_type', "N/A"))}</td>
                                 <td>
                                     <div class="confidence-bar" style="display: inline-block; width: 60px; background: #e5e7eb; border-radius: 10px; height: 20px; vertical-align: middle; margin-right: 8px;">
                                         <div class="confidence-fill confidence-{conf_class}" style="width:{confidence*100}%; height: 100%; border-radius: 10px; background: {'#10b981' if confidence > 0.8 else '#f59e0b' if confidence > 0.6 else '#ef4444'};"></div>
@@ -1215,7 +1250,7 @@ class HumanReviewDashboard:
                                 <td style="font-size: 13px; font-weight: 600; color: {'#dc2626' if confidence < 0.6 else '#f59e0b' if confidence < 0.8 else '#059669'};">
                                     {'Low Conf' if confidence < 0.6 else 'Medium' if confidence < 0.8 else 'Good'}
                                 </td>
-                                <td class="source-doc" style="font-size: 12px; color: #000000; max-width: 200px; word-wrap: break-word;" title="{source_doc}">
+                                <td class="source-doc" style="font-size: 12px; color: var(--text-primary); max-width: 200px; word-wrap: break-word;" title="{source_doc}">
                                     {source_doc}
                                 </td>
                             </tr>
