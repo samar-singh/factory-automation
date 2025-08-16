@@ -26,34 +26,39 @@ class AgenticOrchestratorV3:
         self.chromadb_client = chromadb_client
         self.runner = Runner()
         self.is_monitoring = False
-        
+
         # Load business email configuration
-        self.business_emails = settings.config.get('business_emails', {})
+        self.business_emails = settings.config.get("business_emails", {})
         self.email_configs = {}  # Map email address to full config
-        
+
         # Process email configurations
-        for email_config in self.business_emails.get('emails', []):
-            address = email_config.get('address')
+        for email_config in self.business_emails.get("emails", []):
+            address = email_config.get("address")
             if address:
                 self.email_configs[address.lower()] = {
-                    'description': email_config.get('description', ''),
-                    'likely_intents': email_config.get('likely_intents', []),
-                    'confidence_boost': email_config.get('confidence_boost', 0.0)
+                    "description": email_config.get("description", ""),
+                    "likely_intents": email_config.get("likely_intents", []),
+                    "confidence_boost": email_config.get("confidence_boost", 0.0),
                 }
-        
+
         # Extract just the addresses for compatibility
         self.primary_emails = list(self.email_configs.keys())
-        
+
         # Pattern learning config
-        self.pattern_config = self.business_emails.get('pattern_learning', {
-            'enabled': True,
-            'min_count_for_pattern': 3,
-            'max_confidence': 0.95,
-            'initial_confidence': 0.6,
-            'confidence_increment': 0.05
-        })
-        
-        logger.info(f"Monitoring {len(self.primary_emails)} business emails with descriptions")
+        self.pattern_config = self.business_emails.get(
+            "pattern_learning",
+            {
+                "enabled": True,
+                "min_count_for_pattern": 3,
+                "max_confidence": 0.95,
+                "initial_confidence": 0.6,
+                "confidence_increment": 0.05,
+            },
+        )
+
+        logger.info(
+            f"Monitoring {len(self.primary_emails)} business emails with descriptions"
+        )
         for email, config in self.email_configs.items():
             logger.info(f"  {email}: {config['description'][:50]}...")
 
@@ -67,9 +72,10 @@ class AgenticOrchestratorV3:
         # Initialize new processors
         self.order_processor = OrderProcessorAgent(chromadb_client)
         self.image_processor = ImageProcessorAgent(chromadb_client)
-        
+
         # Initialize OpenAI client for classification
         from openai import AsyncOpenAI
+
         self.openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
 
         # Tool call tracking
@@ -176,68 +182,91 @@ Think step by step and ensure complete execution from email receipt to customer 
             description_override="Intelligently classify email intent using business context, patterns, and AI. ALWAYS use this FIRST before any other processing.",
         )
         async def classify_email_intent(
-            email_subject: str, 
-            email_body: str, 
+            email_subject: str,
+            email_body: str,
             sender_email: str,
-            recipient_email: Optional[str] = None
+            recipient_email: Optional[str] = None,
         ) -> str:
             """Classify email using business context, patterns, and GPT-4o"""
             import json
+
             from ..factory_database.connection import get_db
             from ..factory_database.models import EmailPattern
-            
+
             # Normalize recipient email
             if recipient_email:
                 recipient_email = recipient_email.lower()
             else:
-                recipient_email = self.primary_emails[0] if self.primary_emails else "orders@factory.com"
-            
+                recipient_email = (
+                    self.primary_emails[0]
+                    if self.primary_emails
+                    else "orders@factory.com"
+                )
+
             # Get the business context for this email
             email_config = self.email_configs.get(recipient_email, {})
-            email_description = email_config.get('description', 'General business email')
-            likely_intents = email_config.get('likely_intents', [])
-            confidence_boost = email_config.get('confidence_boost', 0.0)
-            
+            email_description = email_config.get(
+                "description", "General business email"
+            )
+            likely_intents = email_config.get("likely_intents", [])
+            confidence_boost = email_config.get("confidence_boost", 0.0)
+
             # Step 1: Check sender pattern in PostgreSQL
-            if self.pattern_config.get('enabled', True):
+            if self.pattern_config.get("enabled", True):
                 try:
                     with get_db() as db:
-                        pattern = db.query(EmailPattern)\
+                        pattern = (
+                            db.query(EmailPattern)
                             .filter(
                                 EmailPattern.sender_email == sender_email,
-                                EmailPattern.recipient_email == recipient_email
-                            )\
-                            .order_by(EmailPattern.count.desc())\
+                                EmailPattern.recipient_email == recipient_email,
+                            )
+                            .order_by(EmailPattern.count.desc())
                             .first()
-                        
-                        min_count = self.pattern_config.get('min_count_for_pattern', 3)
-                        
+                        )
+
+                        min_count = self.pattern_config.get("min_count_for_pattern", 3)
+
                         if pattern and pattern.count >= min_count:
                             # Calculate confidence
-                            base_confidence = self.pattern_config.get('initial_confidence', 0.6)
-                            increment = self.pattern_config.get('confidence_increment', 0.05)
-                            max_conf = self.pattern_config.get('max_confidence', 0.95)
-                            
-                            confidence = min(max_conf, base_confidence + (pattern.count * increment))
-                            
+                            base_confidence = self.pattern_config.get(
+                                "initial_confidence", 0.6
+                            )
+                            increment = self.pattern_config.get(
+                                "confidence_increment", 0.05
+                            )
+                            max_conf = self.pattern_config.get("max_confidence", 0.95)
+
+                            confidence = min(
+                                max_conf, base_confidence + (pattern.count * increment)
+                            )
+
                             # Apply boost if this intent is likely for this email
                             if pattern.intent_type in likely_intents:
-                                confidence = min(max_conf, confidence + confidence_boost)
-                            
+                                confidence = min(
+                                    max_conf, confidence + confidence_boost
+                                )
+
                             if confidence > 0.85:
-                                logger.info(f"Using learned pattern for {sender_email}→{recipient_email}: {pattern.intent_type}")
-                                return json.dumps({
-                                    "classification": pattern.intent_type,
-                                    "confidence": confidence,
-                                    "method": "learned_pattern",
-                                    "pattern_count": pattern.count,
-                                    "recipient_email": recipient_email,
-                                    "recipient_description": email_description,
-                                    "suggested_tools": self._get_tools_for_intent(pattern.intent_type)
-                                })
+                                logger.info(
+                                    f"Using learned pattern for {sender_email}→{recipient_email}: {pattern.intent_type}"
+                                )
+                                return json.dumps(
+                                    {
+                                        "classification": pattern.intent_type,
+                                        "confidence": confidence,
+                                        "method": "learned_pattern",
+                                        "pattern_count": pattern.count,
+                                        "recipient_email": recipient_email,
+                                        "recipient_description": email_description,
+                                        "suggested_tools": self._get_tools_for_intent(
+                                            pattern.intent_type
+                                        ),
+                                    }
+                                )
                 except Exception as e:
                     logger.warning(f"Error checking patterns: {e}")
-            
+
             # Step 2: Use GPT-4o with full business context
             try:
                 # Build context-rich prompt
@@ -285,7 +314,7 @@ Think step by step and ensure complete execution from email receipt to customer 
                             - key_indicators: Specific words/phrases that guided your decision
                             - alternative_classification: Second most likely intent (if any)
                             - extracted_entities: Order numbers, UTRs, quantities, etc.
-                            """
+                            """,
                         },
                         {
                             "role": "user",
@@ -297,55 +326,65 @@ Think step by step and ensure complete execution from email receipt to customer 
                             Body: {email_body[:1000]}
                             
                             Classify this email considering it was sent to an address meant for: {email_description}
-                            """
-                        }
+                            """,
+                        },
                     ],
                     response_format={"type": "json_object"},
-                    temperature=0.1
+                    temperature=0.1,
                 )
-                
+
                 result = json.loads(response.choices[0].message.content)
-                
+
                 # Apply confidence boost if classification matches expected intent
-                if result['classification'] in likely_intents:
-                    original_confidence = result['confidence']
-                    result['confidence'] = min(0.99, result['confidence'] + confidence_boost)
-                    result['confidence_boosted'] = True
-                    result['boost_reason'] = f"Matches expected intent for {recipient_email}"
-                    logger.info(f"Boosted confidence from {original_confidence:.2f} to {result['confidence']:.2f}")
-                
+                if result["classification"] in likely_intents:
+                    original_confidence = result["confidence"]
+                    result["confidence"] = min(
+                        0.99, result["confidence"] + confidence_boost
+                    )
+                    result["confidence_boosted"] = True
+                    result["boost_reason"] = (
+                        f"Matches expected intent for {recipient_email}"
+                    )
+                    logger.info(
+                        f"Boosted confidence from {original_confidence:.2f} to {result['confidence']:.2f}"
+                    )
+
                 # Store pattern for learning with description
-                if self.pattern_config.get('enabled', True):
+                if self.pattern_config.get("enabled", True):
                     await self._update_sender_pattern(
-                        sender_email, 
+                        sender_email,
                         recipient_email,
                         email_description,
-                        result['classification'],
-                        email_subject
+                        result["classification"],
+                        email_subject,
                     )
-                
-                result['method'] = 'ai_analysis_with_context'
-                result['recipient_email'] = recipient_email
-                result['recipient_description'] = email_description
-                result['suggested_tools'] = self._get_tools_for_intent(result['classification'])
-                
+
+                result["method"] = "ai_analysis_with_context"
+                result["recipient_email"] = recipient_email
+                result["recipient_description"] = email_description
+                result["suggested_tools"] = self._get_tools_for_intent(
+                    result["classification"]
+                )
+
                 return json.dumps(result)
-                
+
             except Exception as e:
                 logger.error(f"AI classification failed: {e}")
                 # Context-aware fallback
                 default_intent = likely_intents[0] if likely_intents else "NEW_ORDER"
-                return json.dumps({
-                    "classification": default_intent,
-                    "confidence": 0.4,
-                    "error": str(e),
-                    "method": "context_aware_fallback",
-                    "recipient_email": recipient_email,
-                    "recipient_description": email_description,
-                    "fallback_reason": f"Using most likely intent for {recipient_email}",
-                    "suggested_tools": self._get_tools_for_intent(default_intent)
-                })
-        
+                return json.dumps(
+                    {
+                        "classification": default_intent,
+                        "confidence": 0.4,
+                        "error": str(e),
+                        "method": "context_aware_fallback",
+                        "recipient_email": recipient_email,
+                        "recipient_description": email_description,
+                        "fallback_reason": f"Using most likely intent for {recipient_email}",
+                        "suggested_tools": self._get_tools_for_intent(default_intent),
+                    }
+                )
+
         tools.append(classify_email_intent)
 
         # REMOVED analyze_email - functionality now in process_complete_order
@@ -615,7 +654,11 @@ Think step by step and ensure complete execution from email receipt to customer 
                     "approval_status": (
                         result.order.approval_status if result.order else "failed"
                     ),
-                    "inventory_matches": len(result.inventory_matches),
+                    "inventory_matches": (
+                        result.inventory_matches[:20]
+                        if result.inventory_matches
+                        else []
+                    ),  # Keep actual matches for review
                     "image_matches": (
                         len(result.image_matches)
                         if hasattr(result, "image_matches")
@@ -666,11 +709,13 @@ Think step by step and ensure complete execution from email receipt to customer 
                 # The orchestrator AI will use the create_human_review tool if needed
                 if result.recommended_action == "human_review":
                     response["needs_review"] = True
-                    response["review_reason"] = getattr(result.order, "review_notes", "Manual review required")
-                    
+                    response["review_reason"] = getattr(
+                        result.order, "review_notes", "Manual review required"
+                    )
+
                     # Prepare data for AI to use in review creation
                     response["review_data_prepared"] = True
-                    
+
                     # Add extracted items for review
                     extracted_items = []
                     if result.order and result.order.items:
@@ -685,13 +730,13 @@ Think step by step and ensure complete execution from email receipt to customer 
                                 }
                             )
                     response["extracted_items_for_review"] = extracted_items
-                    
+
                     logger.info(
                         f"Order {response['order_id']} marked for review - orchestrator AI will decide on creation"
                     )
-                
+
                 # Store the result for the AI to use when creating review
-                if hasattr(self, 'human_manager'):
+                if hasattr(self, "human_manager"):
                     # Store in the orchestrator that has human_manager
                     self._last_order_result = response
                     self._current_email_subject = email_subject
@@ -725,9 +770,10 @@ Think step by step and ensure complete execution from email receipt to customer 
             """Extract and parse data from Excel attachment"""
             try:
                 import base64
-                import pandas as pd
                 import tempfile
                 from pathlib import Path
+
+                import pandas as pd
 
                 # Decode base64 content if needed
                 if isinstance(content, str):
@@ -775,9 +821,10 @@ Think step by step and ensure complete execution from email receipt to customer 
             """Extract text from PDF attachment"""
             try:
                 import base64
-                import PyPDF2
                 import tempfile
                 from pathlib import Path
+
+                import PyPDF2
 
                 # Decode base64 content if needed
                 if isinstance(content, str):
@@ -1040,23 +1087,25 @@ Think step by step and ensure complete execution from email receipt to customer 
             description_override="Send email responses to customers, suppliers, or internal staff. Use this to complete the communication loop after processing.",
         )
         async def send_email_response(
-            to_email: str, 
-            subject: str, 
-            body: str, 
+            to_email: str,
+            subject: str,
+            body: str,
             email_type: str,
-            attachments: Optional[List[str]] = None
+            attachments: Optional[List[str]] = None,
         ) -> str:
             """Send email response"""
             import json
-            
+
             try:
                 # Check if we have Gmail production agent with sending capability
-                if hasattr(self, 'gmail_agent') and self.gmail_agent:
+                if hasattr(self, "gmail_agent") and self.gmail_agent:
                     # TODO: Implement actual Gmail sending when API is configured
                     # For now, return mock successful response
                     logger.info(f"Sending {email_type} email to {to_email}")
-                    logger.debug(f"Email content: Subject: {subject}, Body preview: {body[:200]}...")
-                    
+                    logger.debug(
+                        f"Email content: Subject: {subject}, Body preview: {body[:200]}..."
+                    )
+
                     result = {
                         "email_sent": True,
                         "to": to_email,
@@ -1065,37 +1114,39 @@ Think step by step and ensure complete execution from email receipt to customer 
                         "has_attachments": bool(attachments),
                         "timestamp": datetime.now().isoformat(),
                         "status": "sent_successfully",
-                        "mock_mode": True  # Remove when actual sending is implemented
+                        "mock_mode": True,  # Remove when actual sending is implemented
                     }
-                    
+
                     # Log the response for tracking
                     logger.info(f"Email response sent successfully to {to_email}")
-                    
+
                     return json.dumps(result)
                 else:
                     # No Gmail agent available
                     logger.warning("Gmail agent not available for sending emails")
-                    
+
                     result = {
                         "email_sent": False,
                         "to": to_email,
                         "subject": subject,
                         "type": email_type,
                         "status": "gmail_not_configured",
-                        "message": "Email queued for sending when Gmail is configured"
+                        "message": "Email queued for sending when Gmail is configured",
                     }
-                    
+
                     return json.dumps(result)
-                    
+
             except Exception as e:
                 logger.error(f"Error sending email response: {e}")
-                return json.dumps({
-                    "email_sent": False,
-                    "error": str(e),
-                    "to": to_email,
-                    "subject": subject
-                })
-        
+                return json.dumps(
+                    {
+                        "email_sent": False,
+                        "error": str(e),
+                        "to": to_email,
+                        "subject": subject,
+                    }
+                )
+
         tools.append(send_email_response)
 
         # Payment tracking tool - Process payment confirmations
@@ -1108,26 +1159,28 @@ Think step by step and ensure complete execution from email receipt to customer 
             payment_type: str,  # "utr", "cheque", "cash", "online"
             payment_reference: str,
             amount: Optional[float] = None,
-            order_id: Optional[str] = None
+            order_id: Optional[str] = None,
         ) -> str:
             """Track payment information"""
             import json
             import re
-            
+
             try:
                 # Validate UTR if payment type is UTR
                 if payment_type == "utr":
                     # UTR validation pattern (12-22 digits)
-                    utr_pattern = r'^\d{12,22}$'
+                    utr_pattern = r"^\d{12,22}$"
                     if not re.match(utr_pattern, payment_reference):
                         logger.warning(f"Invalid UTR format: {payment_reference}")
-                        return json.dumps({
-                            "success": False,
-                            "error": "Invalid UTR format",
-                            "payment_reference": payment_reference,
-                            "expected_format": "12-22 digit number"
-                        })
-                
+                        return json.dumps(
+                            {
+                                "success": False,
+                                "error": "Invalid UTR format",
+                                "payment_reference": payment_reference,
+                                "expected_format": "12-22 digit number",
+                            }
+                        )
+
                 # TODO: Save payment to database
                 # For now, create mock payment record
                 payment_record = {
@@ -1139,11 +1192,13 @@ Think step by step and ensure complete execution from email receipt to customer 
                     "order_id": order_id,
                     "status": "verified",
                     "recorded_at": datetime.now().isoformat(),
-                    "requires_manual_verification": payment_type == "cheque"
+                    "requires_manual_verification": payment_type == "cheque",
                 }
-                
-                logger.info(f"Payment tracked: {payment_type} - {payment_reference} from {sender_email}")
-                
+
+                logger.info(
+                    f"Payment tracked: {payment_type} - {payment_reference} from {sender_email}"
+                )
+
                 # Determine next actions
                 next_actions = []
                 if order_id:
@@ -1152,27 +1207,30 @@ Think step by step and ensure complete execution from email receipt to customer 
                 else:
                     next_actions.append("match_payment_to_order using customer email")
                     next_actions.append("send_email_response requesting order details")
-                
+
                 result = {
                     "success": True,
                     "payment_tracked": True,
                     "payment_record": payment_record,
                     "confidence": 0.95 if payment_type == "utr" else 0.8,
                     "next_actions": next_actions,
-                    "requires_human_review": payment_type == "cheque" or amount > 100000
+                    "requires_human_review": payment_type == "cheque"
+                    or amount > 100000,
                 }
-                
+
                 return json.dumps(result)
-                
+
             except Exception as e:
                 logger.error(f"Error tracking payment: {e}")
-                return json.dumps({
-                    "success": False,
-                    "error": str(e),
-                    "payment_reference": payment_reference,
-                    "requires_human_review": True
-                })
-        
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": str(e),
+                        "payment_reference": payment_reference,
+                        "requires_human_review": True,
+                    }
+                )
+
         tools.append(track_payment)
 
         # Handle supplier inquiry tool
@@ -1181,14 +1239,11 @@ Think step by step and ensure complete execution from email receipt to customer 
             description_override="Handle supplier communications, vendor inquiries, and procurement-related emails.",
         )
         async def handle_supplier_inquiry(
-            supplier_email: str,
-            inquiry_type: str,
-            email_subject: str,
-            email_body: str
+            supplier_email: str, inquiry_type: str, email_subject: str, email_body: str
         ) -> str:
             """Handle supplier communications"""
             import json
-            
+
             try:
                 # Analyze supplier inquiry
                 inquiry_types = {
@@ -1197,9 +1252,9 @@ Think step by step and ensure complete execution from email receipt to customer 
                     "delivery_schedule": "Delivery timeline inquiry",
                     "payment_terms": "Payment terms discussion",
                     "quality_concern": "Quality issue report",
-                    "new_vendor": "New vendor registration"
+                    "new_vendor": "New vendor registration",
                 }
-                
+
                 # Create inquiry record
                 inquiry_record = {
                     "inquiry_id": f"INQ_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
@@ -1207,10 +1262,14 @@ Think step by step and ensure complete execution from email receipt to customer 
                     "inquiry_type": inquiry_type,
                     "description": inquiry_types.get(inquiry_type, "General inquiry"),
                     "subject": email_subject,
-                    "priority": "high" if inquiry_type in ["quality_concern", "delivery_schedule"] else "medium",
-                    "received_at": datetime.now().isoformat()
+                    "priority": (
+                        "high"
+                        if inquiry_type in ["quality_concern", "delivery_schedule"]
+                        else "medium"
+                    ),
+                    "received_at": datetime.now().isoformat(),
                 }
-                
+
                 # Determine routing
                 routing = {
                     "quotation": "procurement_team",
@@ -1218,11 +1277,11 @@ Think step by step and ensure complete execution from email receipt to customer 
                     "delivery_schedule": "production_planning",
                     "payment_terms": "finance_team",
                     "quality_concern": "quality_assurance",
-                    "new_vendor": "vendor_management"
+                    "new_vendor": "vendor_management",
                 }
-                
+
                 route_to = routing.get(inquiry_type, "procurement_team")
-                
+
                 result = {
                     "success": True,
                     "inquiry_processed": True,
@@ -1230,23 +1289,28 @@ Think step by step and ensure complete execution from email receipt to customer 
                     "routed_to": route_to,
                     "auto_response_sent": True,
                     "response_message": f"Your {inquiry_types.get(inquiry_type, 'inquiry')} has been received and forwarded to our {route_to.replace('_', ' ')}. We will respond within 24 hours.",
-                    "requires_human_review": inquiry_type in ["quality_concern", "new_vendor"],
-                    "confidence": 0.85
+                    "requires_human_review": inquiry_type
+                    in ["quality_concern", "new_vendor"],
+                    "confidence": 0.85,
                 }
-                
-                logger.info(f"Supplier inquiry processed: {inquiry_type} from {supplier_email}, routed to {route_to}")
-                
+
+                logger.info(
+                    f"Supplier inquiry processed: {inquiry_type} from {supplier_email}, routed to {route_to}"
+                )
+
                 return json.dumps(result)
-                
+
             except Exception as e:
                 logger.error(f"Error handling supplier inquiry: {e}")
-                return json.dumps({
-                    "success": False,
-                    "error": str(e),
-                    "supplier_email": supplier_email,
-                    "requires_human_review": True
-                })
-        
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": str(e),
+                        "supplier_email": supplier_email,
+                        "requires_human_review": True,
+                    }
+                )
+
         tools.append(handle_supplier_inquiry)
 
         # Order status update tool
@@ -1331,8 +1395,15 @@ Think step by step and ensure complete execution from email receipt to customer 
                 # Construct prompt for autonomous processing with classification
                 # Don't truncate the email body - it's crucial for extraction
                 email_body = email_data.get("body", "No body")
-                recipient_email = email_data.get('to', self.primary_emails[0] if self.primary_emails else 'orders@factory.com')
-                
+                recipient_email = email_data.get(
+                    "to",
+                    (
+                        self.primary_emails[0]
+                        if self.primary_emails
+                        else "orders@factory.com"
+                    ),
+                )
+
                 prompt = f"""
 Analyze and process this business email autonomously:
 
@@ -1562,55 +1633,103 @@ Use your tools to:
                 break
 
         return specs
-    
+
     def _get_tools_for_intent(self, intent: str) -> List[str]:
         """Get recommended tools based on intent"""
         tool_mapping = {
-            "NEW_ORDER": ["process_complete_order", "generate_document", "send_email_response"],
-            "ORDER_MODIFICATION": ["get_order_status", "update_order", "send_email_response"],
-            "URGENT_ORDER": ["process_complete_order", "priority_flag", "send_email_response"],
+            "NEW_ORDER": [
+                "process_complete_order",
+                "generate_document",
+                "send_email_response",
+            ],
+            "ORDER_MODIFICATION": [
+                "get_order_status",
+                "update_order",
+                "send_email_response",
+            ],
+            "URGENT_ORDER": [
+                "process_complete_order",
+                "priority_flag",
+                "send_email_response",
+            ],
             "PAYMENT": ["track_payment", "update_order_status", "send_email_response"],
             "PAYMENT_INQUIRY": ["check_payment_status", "send_email_response"],
-            "INQUIRY": ["search_inventory", "get_customer_context", "send_email_response"],
-            "QUOTATION_REQUEST": ["calculate_quote", "generate_document", "send_email_response"],
-            "NEW_CUSTOMER": ["create_customer", "send_welcome_package", "send_email_response"],
+            "INQUIRY": [
+                "search_inventory",
+                "get_customer_context",
+                "send_email_response",
+            ],
+            "QUOTATION_REQUEST": [
+                "calculate_quote",
+                "generate_document",
+                "send_email_response",
+            ],
+            "NEW_CUSTOMER": [
+                "create_customer",
+                "send_welcome_package",
+                "send_email_response",
+            ],
             "FOLLOWUP": ["get_order_status", "send_email_response"],
-            "SUPPLIER": ["handle_supplier_inquiry", "forward_to_procurement", "send_email_response"],
-            "MATERIAL_QUOTATION": ["process_supplier_quote", "compare_prices", "send_email_response"],
-            "DELIVERY_UPDATE": ["update_delivery_status", "notify_customer", "send_email_response"],
-            "COMPLAINT": ["create_ticket", "get_customer_context", "send_email_response"],
-            "QUALITY_ISSUE": ["create_quality_report", "notify_qa_team", "send_email_response"],
-            "INVOICE_REQUEST": ["generate_invoice", "send_email_response"]
+            "SUPPLIER": [
+                "handle_supplier_inquiry",
+                "forward_to_procurement",
+                "send_email_response",
+            ],
+            "MATERIAL_QUOTATION": [
+                "process_supplier_quote",
+                "compare_prices",
+                "send_email_response",
+            ],
+            "DELIVERY_UPDATE": [
+                "update_delivery_status",
+                "notify_customer",
+                "send_email_response",
+            ],
+            "COMPLAINT": [
+                "create_ticket",
+                "get_customer_context",
+                "send_email_response",
+            ],
+            "QUALITY_ISSUE": [
+                "create_quality_report",
+                "notify_qa_team",
+                "send_email_response",
+            ],
+            "INVOICE_REQUEST": ["generate_invoice", "send_email_response"],
         }
         return tool_mapping.get(intent, ["get_customer_context", "send_email_response"])
-    
+
     async def _update_sender_pattern(
-        self, 
-        sender_email: str, 
-        recipient_email: str, 
+        self,
+        sender_email: str,
+        recipient_email: str,
         recipient_description: str,
-        intent: str, 
-        subject: str
+        intent: str,
+        subject: str,
     ):
         """Update pattern with business context"""
         try:
             from ..factory_database.connection import get_db
             from ..factory_database.models import EmailPattern
-            
+
             with get_db() as db:
-                pattern = db.query(EmailPattern)\
+                pattern = (
+                    db.query(EmailPattern)
                     .filter_by(
                         sender_email=sender_email,
                         recipient_email=recipient_email,
-                        intent_type=intent
-                    )\
+                        intent_type=intent,
+                    )
                     .first()
-                
+                )
+
                 if pattern:
                     pattern.count += 1
                     pattern.last_seen = datetime.utcnow()
-                    pattern.recipient_description = recipient_description  # Update description
-                    
+                    pattern.recipient_description = (
+                        recipient_description  # Update description
+                    )
+
                     # Update subject keywords
                     if pattern.subject_keywords:
                         keywords = json.loads(pattern.subject_keywords)
@@ -1625,27 +1744,31 @@ Use your tools to:
                         recipient_description=recipient_description,
                         intent_type=intent,
                         count=1,
-                        subject_keywords=json.dumps(subject.lower().split()[:5])
+                        subject_keywords=json.dumps(subject.lower().split()[:5]),
                     )
                     db.add(pattern)
-                
+
                 db.commit()
-                logger.info(f"Pattern updated: {sender_email}→{recipient_email} ({intent})")
+                logger.info(
+                    f"Pattern updated: {sender_email}→{recipient_email} ({intent})"
+                )
         except Exception as e:
             logger.error(f"Failed to update pattern: {e}")
-    
-    async def learn_from_feedback(self, email_id: str, actual_intent: str, was_correct: bool):
+
+    async def learn_from_feedback(
+        self, email_id: str, actual_intent: str, was_correct: bool
+    ):
         """Update patterns based on human feedback"""
         try:
             from ..factory_database.connection import get_db
             from ..factory_database.models import EmailPattern
-            
+
             with get_db() as db:
                 # Find the pattern that was used
-                pattern = db.query(EmailPattern)\
-                    .filter_by(intent_type=actual_intent)\
-                    .first()
-                
+                pattern = (
+                    db.query(EmailPattern).filter_by(intent_type=actual_intent).first()
+                )
+
                 if pattern:
                     if was_correct:
                         pattern.auto_approved_count += 1
@@ -1653,8 +1776,10 @@ Use your tools to:
                     else:
                         pattern.manual_review_count += 1
                         pattern.confidence = max(0.3, pattern.confidence - 0.1)
-                    
+
                     db.commit()
-                    logger.info(f"Learned from feedback: {actual_intent} correct={was_correct}")
+                    logger.info(
+                        f"Learned from feedback: {actual_intent} correct={was_correct}"
+                    )
         except Exception as e:
             logger.error(f"Failed to learn from feedback: {e}")

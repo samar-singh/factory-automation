@@ -1,12 +1,13 @@
 """Visual similarity search using CLIP embeddings for image-to-image matching"""
 
 import logging
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import clip
 import numpy as np
 import torch
-import clip
 from PIL import Image
-from typing import List, Dict, Any, Optional
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 

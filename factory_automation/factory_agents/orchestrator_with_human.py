@@ -50,72 +50,85 @@ class OrchestratorWithHuman(AgenticOrchestratorV3):
         ) -> str:
             """Create human review request using data from last processed order"""
 
-
             # Get the last order result from the orchestrator
-            if not hasattr(self, '_last_order_result') or self._last_order_result is None:
+            if (
+                not hasattr(self, "_last_order_result")
+                or self._last_order_result is None
+            ):
                 return "Error: No order has been processed yet. Call process_complete_order first."
-            
+
             result = self._last_order_result
-            
+
             # Verify this is the correct order
-            if result.get('order_id') != order_id:
+            if result.get("order_id") != order_id:
                 return f"Error: Order ID mismatch. Expected {result.get('order_id')}, got {order_id}"
-            
+
             # Check if review is needed
-            if not result.get('needs_review'):
+            if not result.get("needs_review"):
                 return f"Order {order_id} does not need review according to process_complete_order"
-            
+
             # Extract data from the order result
             try:
                 # Debug logging
                 logger.info(f"Order result keys: {list(result.keys())}")
-                logger.info(f"confidence_scores type: {type(result.get('confidence_scores'))}, value: {result.get('confidence_scores')}")
-                
+                logger.info(
+                    f"confidence_scores type: {type(result.get('confidence_scores'))}, value: {result.get('confidence_scores')}"
+                )
+
                 # Prepare email data
                 email_dict = {
-                    "subject": getattr(self, '_current_email_subject', 'Order Request'),
-                    "from": result.get('customer', 'unknown@example.com'),
-                    "body": getattr(self, '_current_email_body', '')[:500],
+                    "subject": getattr(self, "_current_email_subject", "Order Request"),
+                    "from": result.get("customer", "unknown@example.com"),
+                    "body": getattr(self, "_current_email_body", "")[:500],
                     "order_id": order_id,
                 }
-                
+
                 # Get search results (inventory matches)
-                inventory_matches = result.get('inventory_matches')
-                if inventory_matches is None:
-                    results_list = []
-                elif isinstance(inventory_matches, list):
+                inventory_matches = result.get("inventory_matches", [])
+                if isinstance(inventory_matches, list):
                     results_list = inventory_matches[:10]
-                elif isinstance(inventory_matches, int):
-                    # Sometimes it's just a count
-                    results_list = []
-                    logger.info(f"inventory_matches is a count: {inventory_matches}")
                 else:
+                    # This shouldn't happen anymore but handle it gracefully
                     results_list = []
-                    logger.warning(f"inventory_matches unexpected type: {type(inventory_matches)}")
-                
-                # Get extracted items  
-                extracted_items = result.get('extracted_items_for_review')
+                    logger.warning(
+                        f"inventory_matches is not a list: {type(inventory_matches)}, value: {inventory_matches}"
+                    )
+
+                # Get extracted items
+                extracted_items = result.get("extracted_items_for_review")
                 if extracted_items is None:
                     items_list = []
                 elif isinstance(extracted_items, list):
                     items_list = extracted_items
                 else:
                     items_list = []
-                    logger.warning(f"extracted_items_for_review is not a list: {type(extracted_items)}")
-                logger.info(f"items_list type: {type(items_list)}, length: {len(items_list) if isinstance(items_list, list) else 'N/A'}")
-                
+                    logger.warning(
+                        f"extracted_items_for_review is not a list: {type(extracted_items)}"
+                    )
+                logger.info(
+                    f"items_list type: {type(items_list)}, length: {len(items_list) if isinstance(items_list, list) else 'N/A'}"
+                )
+
                 # Get confidence score
                 confidence_score = 0.0
-                if result.get('confidence_scores'):
-                    scores = result['confidence_scores']
+                if result.get("confidence_scores"):
+                    scores = result["confidence_scores"]
                     if isinstance(scores, dict):
                         # Dict with item_id as keys and confidence as values
-                        if 'average' in scores:
-                            avg_score = scores['average']
+                        if "average" in scores:
+                            avg_score = scores["average"]
                         elif scores:
                             # Calculate average from dict values
-                            score_values = [v for v in scores.values() if isinstance(v, (int, float))]
-                            avg_score = sum(score_values) / len(score_values) if score_values else 0
+                            score_values = [
+                                v
+                                for v in scores.values()
+                                if isinstance(v, (int, float))
+                            ]
+                            avg_score = (
+                                sum(score_values) / len(score_values)
+                                if score_values
+                                else 0
+                            )
                         else:
                             avg_score = 0
                     elif isinstance(scores, list):
@@ -124,13 +137,15 @@ class OrchestratorWithHuman(AgenticOrchestratorV3):
                         avg_score = float(scores)
                     else:
                         # Try to get extraction_confidence as fallback
-                        avg_score = result.get('extraction_confidence', 0)
+                        avg_score = result.get("extraction_confidence", 0)
                     confidence_score = avg_score
-                elif result.get('extraction_confidence'):
-                    confidence_score = result['extraction_confidence']
-                
-                logger.info(f"Creating review for order {order_id} with confidence {confidence_score:.2%}")
-                
+                elif result.get("extraction_confidence"):
+                    confidence_score = result["extraction_confidence"]
+
+                logger.info(
+                    f"Creating review for order {order_id} with confidence {confidence_score:.2%}"
+                )
+
             except Exception as e:
                 logger.error(f"Error extracting data from order result: {e}")
                 return f"Error: Failed to extract order data - {str(e)}"
@@ -138,13 +153,72 @@ class OrchestratorWithHuman(AgenticOrchestratorV3):
             # Create review request
             # Ensure lists are actually lists
             if not isinstance(results_list, list):
-                logger.warning(f"results_list is not a list: {type(results_list)}, value: {results_list}")
+                logger.warning(
+                    f"results_list is not a list: {type(results_list)}, value: {results_list}"
+                )
                 results_list = []
-            
+
             if not isinstance(items_list, list):
-                logger.warning(f"items_list is not a list: {type(items_list)}, value: {items_list}")
+                logger.warning(
+                    f"items_list is not a list: {type(items_list)}, value: {items_list}"
+                )
                 items_list = []
-            
+
+            # Add orchestrator's recommendation to email data
+            email_dict["orchestrator_recommendation"] = (
+                f"{review_reason} (Confidence: {confidence_score:.1%})"
+            )
+            email_dict["recommended_action"] = result.get(
+                "recommended_action", "human_review"
+            )
+
+            # Create a queued recommendation instead of direct review
+            from ..factory_models.order_models import (
+                OrderPriority,
+                QueuedRecommendation,
+                RecommendationType,
+            )
+
+            # Determine priority based on confidence
+            if confidence_score < 0.5:
+                priority = OrderPriority.URGENT
+            elif confidence_score < 0.7:
+                priority = OrderPriority.HIGH
+            elif confidence_score < 0.85:
+                priority = OrderPriority.MEDIUM
+            else:
+                priority = OrderPriority.LOW
+
+            # Create recommendation for queue
+            recommendation = QueuedRecommendation(
+                order_id=order_id,
+                customer_email=email_dict.get("from", "unknown"),
+                recommendation_type=RecommendationType.EMAIL_RESPONSE,
+                recommendation_data={
+                    "email_draft": {
+                        "subject": f"Re: {email_dict.get('subject', 'Order Request')}",
+                        "body": result.get(
+                            "suggested_response",
+                            "Thank you for your order. We are processing it.",
+                        ),
+                        "attachments": [],
+                    },
+                    "inventory_matches": results_list,
+                    "extracted_items": items_list,
+                    "original_email": email_dict,
+                    "orchestrator_analysis": review_reason,
+                    "suggested_action": result.get(
+                        "recommended_action", "human_review"
+                    ),
+                },
+                confidence_score=confidence_score,
+                priority=priority,
+            )
+
+            # Add to database queue
+            queue_id = self.human_manager.add_to_recommendation_queue(recommendation)
+
+            # Also create traditional review for backward compatibility
             review = await self.human_manager.create_review_request(
                 email_data=email_dict,
                 search_results=results_list,
@@ -152,7 +226,7 @@ class OrchestratorWithHuman(AgenticOrchestratorV3):
                 extracted_items=items_list,
             )
 
-            return f"Created review request {review.request_id} with {review.priority.value} priority. Status: {review.status.value}"
+            return f"Added to recommendation queue: {queue_id} (Priority: {priority.value}, Confidence: {confidence_score:.1%}). Also created review {review.request_id} for backward compatibility."
 
         # Check review status tool
         @function_tool(
@@ -248,20 +322,20 @@ class OrchestratorWithHuman(AgenticOrchestratorV3):
             if review.status.value == "approved":
                 action_taken = "Proceed with order processing and quotation generation"
                 # Learn from the approval - the AI's classification was correct
-                if hasattr(review, 'classification') and review.classification:
+                if hasattr(review, "classification") and review.classification:
                     await self.learn_from_feedback(
                         email_id=request_id,
                         actual_intent=review.classification,
-                        was_correct=True
+                        was_correct=True,
                     )
             elif review.status.value == "rejected":
                 action_taken = "Send rejection email to customer with reason"
                 # Learn from rejection - the AI may have been wrong
-                if hasattr(review, 'classification') and review.classification:
+                if hasattr(review, "classification") and review.classification:
                     await self.learn_from_feedback(
                         email_id=request_id,
                         actual_intent=review.classification,
-                        was_correct=False
+                        was_correct=False,
                     )
             elif review.status.value == "alternative_suggested":
                 action_taken = f"Send alternative suggestions to customer: {len(review.alternative_items)} items"

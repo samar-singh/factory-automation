@@ -16,8 +16,10 @@ from ..factory_database.models import OrderItem as DBOrderItem
 from ..factory_database.vector_db import ChromaDBClient
 from ..factory_models.ai_extraction_models import (
     AIExtractedOrder,
+)
+from ..factory_models.ai_extraction_models import CustomerInformation as AICustomerInfo
+from ..factory_models.ai_extraction_models import (
     OrderItemAI,
-    CustomerInformation as AICustomerInfo,
 )
 from ..factory_models.order_models import (
     Attachment,
@@ -1013,17 +1015,28 @@ class OrderProcessorAgent:
                 # Use rerank score if available, otherwise regular score
                 confidence = result.get("rerank_score", result.get("score", 0))
 
+                # Extract metadata for easier access in UI
+                metadata = result.get("metadata", {})
+
                 match = {
                     "item_id": item.item_id,
-                    "tag_code": item.tag_specification.tag_code,
+                    "tag_code": metadata.get(
+                        "item_code", item.tag_specification.tag_code
+                    ),
+                    "name": metadata.get(
+                        "item_name", metadata.get("tag_name", "Unknown")
+                    ),
+                    "brand": metadata.get("brand", item.brand),
                     "matched_document": result.get("text", ""),
                     "distance": 1 - confidence,  # Convert to distance for compatibility
                     "confidence": confidence,
-                    "metadata": result.get("metadata", {}),
+                    "similarity_score": confidence,  # For UI compatibility
+                    "metadata": metadata,
                     "search_method": result.get("source", "unknown"),
                     "has_rerank_score": "rerank_score" in result,
                     "confidence_level": result.get("confidence_level", "unknown"),
                     "confidence_percentage": result.get("confidence_percentage", 0),
+                    "type": "text",  # Mark as text-based match (not image)
                 }
                 all_matches.append(match)
 
@@ -1312,8 +1325,12 @@ class OrderProcessorAgent:
         # Store review metadata in the order for the orchestrator to use
         order.review_notes = review_reason
 
+        # CRITICAL: Save order to database BEFORE orchestrator tries to create review
+        # This ensures the foreign key reference in recommendation_queue will work
+        await self._save_order_to_database(order)
+
         logger.info(
-            f"Marked order {order.order_id} for human review (confidence: {overall_confidence:.1%})"
+            f"Marked order {order.order_id} for human review (confidence: {overall_confidence:.1%}) and saved to database"
         )
 
     async def _request_clarification(self, order: ExtractedOrder):
@@ -1326,9 +1343,14 @@ class OrderProcessorAgent:
             "Include tag codes, quantities, and specifications",
         ]
 
+        # Save order to database even when clarification is needed
+        await self._save_order_to_database(order)
+
         # TODO: Send clarification email to customer
 
-        logger.info(f"Requested clarification for order {order.order_id}")
+        logger.info(
+            f"Requested clarification for order {order.order_id} and saved to database"
+        )
 
     async def _save_order_to_database(self, order: ExtractedOrder):
         """Save order to PostgreSQL database"""
@@ -1358,8 +1380,8 @@ class OrderProcessorAgent:
                     order_number=order.order_id,
                     status=order.approval_status,
                     total_amount=0,  # TODO: Calculate
-                    order_date=order.email_date,
-                    delivery_date=order.delivery.required_date,
+                    # Note: created_at is set automatically by the model
+                    # email_date and delivery date info can be stored in metadata or separate tables if needed
                 )
                 session.add(db_order)
                 session.flush()
@@ -1368,7 +1390,7 @@ class OrderProcessorAgent:
                 for item in order.items:
                     db_item = DBOrderItem(
                         order_id=db_order.id,
-                        product_code=item.tag_specification.tag_code,
+                        tag_code=item.tag_specification.tag_code,  # Fixed: was product_code
                         description=f"{item.brand} {item.tag_specification.tag_type.value}",
                         quantity=item.quantity_ordered,
                         unit_price=0,  # TODO: Calculate

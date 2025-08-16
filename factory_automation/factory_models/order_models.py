@@ -301,3 +301,85 @@ class OrderConfirmation(BaseModel):
     inventory_updates: List[InventoryUpdate] = []
     confirmed_at: datetime = Field(default_factory=datetime.now)
     confirmed_by: str
+
+
+class RecommendationType(str, Enum):
+    """Types of recommendations for queue system"""
+
+    EMAIL_RESPONSE = "email_response"
+    DOCUMENT_GENERATION = "document_generation"
+    INVENTORY_UPDATE = "inventory_update"
+    DATABASE_UPDATE = "database_update"
+    NEW_ITEM_ADDITION = "new_item_addition"
+    CUSTOMER_FOLLOW_UP = "customer_follow_up"
+
+
+class QueuedRecommendation(BaseModel):
+    """Recommendation queued for human review"""
+
+    queue_id: str = Field(
+        default_factory=lambda: f"QUEUE-{datetime.now().strftime('%Y%m%d%H%M%S')}-{datetime.now().microsecond:06d}"
+    )
+    order_id: Optional[str] = (
+        None  # Optional for recommendations not tied to specific orders
+    )
+    customer_email: str
+    recommendation_type: RecommendationType
+    recommendation_data: Dict[str, Any]  # Flexible JSON data
+    confidence_score: float = Field(ge=0, le=1)
+    priority: OrderPriority = OrderPriority.MEDIUM
+    status: Literal[
+        "pending", "in_review", "approved", "rejected", "executed", "failed"
+    ] = "pending"
+    batch_id: Optional[str] = None
+
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.now)
+    reviewed_at: Optional[datetime] = None
+    reviewed_by: Optional[str] = None
+    executed_at: Optional[datetime] = None
+
+    # Results
+    execution_result: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None
+
+    class Config:
+        json_encoders = {datetime: lambda v: v.isoformat()}
+
+
+class BatchOperation(BaseModel):
+    """Batch of recommendations for processing"""
+
+    batch_id: str = Field(
+        default_factory=lambda: f"BATCH-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    )
+    batch_name: Optional[str] = None
+    batch_type: Literal["daily", "manual", "urgent", "scheduled"] = "manual"
+
+    # Items
+    total_items: int = 0
+    queue_items: List[QueuedRecommendation] = []
+    approved_items: List[str] = []  # queue_ids
+    rejected_items: List[str] = []  # queue_ids
+    modified_items: Dict[str, Dict[str, Any]] = {}  # queue_id -> modifications
+
+    # Status
+    status: Literal[
+        "pending", "in_review", "processing", "completed", "failed", "rolled_back"
+    ] = "pending"
+
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.now)
+    created_by: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    reviewed_by: Optional[str] = None
+    executed_at: Optional[datetime] = None
+    executed_by: Optional[str] = None
+    completed_at: Optional[datetime] = None
+
+    # Results
+    execution_time_ms: Optional[int] = None
+    results: Optional[Dict[str, Any]] = None
+    error_log: List[str] = []
+    rollback_available: bool = True
+    rollback_executed_at: Optional[datetime] = None

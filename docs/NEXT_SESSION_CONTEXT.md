@@ -1,37 +1,40 @@
 # Next Session Context
 
-## What Was Just Completed (Session 9)
+## What Was Just Completed (Session 15)
 
-### Context-Aware Orchestrator
-- ✅ Implemented intelligent email classification using GPT-4o
-- ✅ Added PostgreSQL pattern learning for sender behavior
-- ✅ Fixed human review creation error ("int object is not subscriptable")
-- ✅ Orchestrator now makes review decisions (not order processor)
-- ✅ Simplified create_human_review tool interface
+### UI Fixes and Human Review Enhancements
+- ✅ Fixed human review UI to display actual inventory images from ChromaDB
+- ✅ Implemented click-to-zoom functionality for tag images  
+- ✅ Resolved all table formatting issues (duplicate headers, font colors, radio buttons)
+- ✅ Fixed database foreign key constraints for order processing
+- ✅ Made Process Selected Batch button always visible with proper styling
 
 ## Current System State
 
 ### Working Features
-1. **Email Processing**
-   - Context-aware classification (NEW_ORDER, PAYMENT, INQUIRY, etc.)
-   - Pattern learning from sender history
-   - Multi-business email support
+1. **Human Review Interface** (FULLY OPERATIONAL)
+   - Actual inventory images display from ChromaDB
+   - Click-to-zoom modal for image inspection
+   - Proper table formatting with visible radio buttons
+   - Process Selected Batch functionality
+   - Color-coded confidence scores
 
 2. **Order Processing**
    - AI extraction from emails and attachments
    - PDF and Excel processing with image extraction
    - Inventory search with Stella-400M embeddings
    - Visual similarity search with CLIP
+   - Orders properly saved before creating review entries
 
-3. **Human Review System**
-   - Automatic creation when confidence < 80%
-   - Priority-based queue management
-   - Review interface in Gradio UI
-   - Feedback loop for pattern learning
+3. **Database Integration**
+   - PostgreSQL with proper foreign key relationships
+   - ChromaDB with base64 image storage
+   - Recommendation queue for human review items
+   - Pattern learning from sender history
 
 ### Known Issues
-- Lint errors in utilities/ folder (bare except statements)
-- Some test files need cleanup
+- Ruff linting: 2 E722 errors (bare except) in image_storage.py
+- Mypy: 122 type errors (non-critical)
 - Gmail live connection pending (needs IT approval)
 
 ## How to Test the System
@@ -43,28 +46,27 @@ source .venv/bin/activate
 
 # 2. Set API keys
 export OPENAI_API_KEY='your-key-here'
-export TOGETHER_API_KEY='your-key-here'  # Optional
+export TOGETHER_API_KEY='your-key-here'  # Optional for Qwen2.5VL
 
 # 3. Run the application
-python run_factory_automation.py
+python3 -m dotenv run -- python3 run_factory_automation.py
 
 # 4. Access at http://127.0.0.1:7860 (or 7861 if port is busy)
 ```
 
 ### Test Workflow
 1. Go to "Order Processing" tab
-2. Paste test email:
-```
-From: storerhppl@gmail.com
-Subject: Allen Solly Order
-Date: Monday, 28 July 2025
-
-Dear Sir,
-We need 1000 price tags for Allen Solly products.
-```
-3. Attach test files (PDFs, Excel with images)
-4. Click "Process Order"
-5. Check "Human Review" tab for created reviews
+2. Paste test email from sample_emails.txt
+3. Upload test documents from inventory/ folder
+4. Click "Process Order with Documents"
+5. Go to "Human Review" tab
+6. Select order from dropdown
+7. Verify:
+   - Inventory matches show with actual tag images
+   - Click on images to test zoom functionality
+   - Radio buttons are visible in Select column
+   - Process button shows count of selected items
+   - Font colors and table formatting are correct
 
 ### Verify Pattern Learning
 ```sql
@@ -80,18 +82,18 @@ WHERE confidence > 0.8;
 ## Important Files to Remember
 
 ### Core Implementation
-- `/factory_automation/factory_agents/orchestrator_v3_agentic.py` - Main orchestrator with classification
-- `/factory_automation/factory_agents/orchestrator_with_human.py` - Human review integration
-- `/factory_automation/factory_agents/order_processor_agent.py` - Order processing logic
+- `/factory_automation/factory_ui/human_review_dashboard.py` - Main UI with image display
+- `/factory_automation/factory_agents/order_processor_agent.py` - Order processing with DB save fix
+- `/run_factory_automation.py` - Main entry point with corrected imports
 - `/config.yaml` - Business email configuration
 
 ### Database
-- `/factory_automation/factory_database/models.py` - EmailPattern model
-- `/migrations/add_email_patterns_table.sql` - Pattern storage migration
+- `/factory_automation/factory_database/models.py` - All database models
+- ChromaDB collection: `tag_images_full` - Contains base64 encoded images
 
-### UI
-- `/run_factory_automation.py` - Main entry point
-- `/factory_automation/factory_ui/human_review_interface_improved.py` - Review interface
+### Test Files
+- `/test_image_fix.py` - Image zoom functionality testing
+- `/factory_automation/factory_agents/generate_clip_embeddings.py` - CLIP embedding generation
 
 ## Next Priorities
 
@@ -127,28 +129,40 @@ WHERE confidence > 0.8;
 
 ## Critical Code Patterns
 
-### Pattern Learning
+### Image Retrieval from ChromaDB
 ```python
-# Always check patterns before AI classification
-pattern = await self._check_sender_pattern(sender_email, recipient_email)
-if pattern and pattern.confidence > 0.8:
-    return pattern.intent_type, pattern.confidence
+# Always check for image_id in metadata
+if 'metadata' in match and 'image_id' in match['metadata']:
+    collection = self.chromadb_client.client.get_collection('tag_images_full')
+    results = collection.get(ids=[image_id], include=['metadatas'])
+    if results['metadatas'] and results['metadatas'][0]:
+        image_url = f"data:image/png;base64,{results['metadatas'][0]['image_base64']}"
 ```
 
-### Review Creation
-```python
-# Store order result for review creation
-self._last_order_result = response
-self._current_email_subject = email_subject
-self._current_email_body = email_body
+### JavaScript Global Functions in Gradio
+```javascript
+// Must make functions global for Gradio HTML components
+window.showImageModal = function(imgUrl, tagCode) {
+    // Implementation
+}
 ```
 
-### Confidence Calculation
+### Database Save Order
 ```python
-# Handle different confidence score formats
-if isinstance(scores, dict):
-    score_values = [v for v in scores.values() if isinstance(v, (int, float))]
-    avg_score = sum(score_values) / len(score_values) if score_values else 0
+# Always save order before creating related records
+db_session.add(new_order)
+db_session.commit()
+# Now safe to create recommendation_queue entries
+```
+
+### CSS for Radio Button Visibility
+```css
+input[type='radio'] {
+    width: 18px !important;
+    height: 18px !important;
+    accent-color: #2563eb !important;
+    opacity: 1 !important;
+}
 ```
 
 ## Environment Variables Needed

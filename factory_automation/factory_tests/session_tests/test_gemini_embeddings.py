@@ -3,6 +3,7 @@
 
 import os
 import sys
+
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -11,8 +12,9 @@ load_dotenv()
 # Add project to path
 sys.path.append(".")
 
-from factory_automation.factory_rag.embeddings_config import EmbeddingsManager
 import numpy as np
+
+from factory_automation.factory_rag.embeddings_config import EmbeddingsManager
 
 
 def test_gemini_embeddings():

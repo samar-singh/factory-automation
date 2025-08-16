@@ -5,10 +5,10 @@ This bypasses the AI orchestrator to test the core functionality
 """
 
 import asyncio
+import logging
 import os
 import tempfile
 from datetime import datetime
-import logging
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -33,10 +33,10 @@ async def test_order_processor_directly():
     print(f"File exists: {os.path.exists(csv_file)}")
 
     # Import and initialize
-    from factory_automation.factory_database.vector_db import ChromaDBClient
     from factory_automation.factory_agents.order_processor_agent import (
         OrderProcessorAgent,
     )
+    from factory_automation.factory_database.vector_db import ChromaDBClient
 
     chromadb_client = ChromaDBClient()
     processor = OrderProcessorAgent(chromadb_client)

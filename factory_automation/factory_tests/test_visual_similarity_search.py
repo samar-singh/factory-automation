@@ -60,8 +60,9 @@ class VisualSimilarityTester:
             return None
 
         try:
-            import torch
             from io import BytesIO
+
+            import torch
 
             # Decode base64 to PIL Image
             image_data = base64.b64decode(image_base64)

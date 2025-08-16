@@ -5,9 +5,9 @@ Tests the full pipeline from UI to order processor
 """
 
 import asyncio
+import logging
 import os
 import tempfile
-import logging
 from datetime import datetime
 
 # Configure detailed logging
@@ -54,10 +54,10 @@ async def test_complete_flow():
 
     # Step 2: Initialize system
     print("\n2. Initializing system...")
-    from factory_automation.factory_database.vector_db import ChromaDBClient
     from factory_automation.factory_agents.orchestrator_with_human import (
         OrchestratorWithHuman,
     )
+    from factory_automation.factory_database.vector_db import ChromaDBClient
 
     chromadb_client = ChromaDBClient()
     orchestrator = OrchestratorWithHuman(chromadb_client, use_mock_gmail=False)

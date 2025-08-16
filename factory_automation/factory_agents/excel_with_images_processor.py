@@ -4,10 +4,11 @@ import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
+
+import openpyxl
 import pandas as pd
 from PIL import Image as PILImage
-import openpyxl
 
 logger = logging.getLogger(__name__)
 

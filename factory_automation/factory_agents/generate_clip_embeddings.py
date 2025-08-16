@@ -4,10 +4,11 @@
 import base64
 import io
 import logging
-import torch
-import clip
-from PIL import Image
 from typing import List
+
+import clip
+import torch
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 

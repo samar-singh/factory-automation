@@ -2,7 +2,8 @@
 """Update tag names in ChromaDB to have meaningful identifiers"""
 
 import logging
-from typing import Dict, Any
+from typing import Any, Dict
+
 from ..factory_database.vector_db import ChromaDBClient
 
 logger = logging.getLogger(__name__)

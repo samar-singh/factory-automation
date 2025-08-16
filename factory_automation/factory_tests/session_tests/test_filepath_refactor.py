@@ -43,10 +43,10 @@ async def test_filepath_processing():
     print("=" * 60)
 
     # Import after environment is loaded
-    from factory_automation.factory_database.vector_db import ChromaDBClient
     from factory_automation.factory_agents.orchestrator_v3_agentic import (
         AgenticOrchestratorV3,
     )
+    from factory_automation.factory_database.vector_db import ChromaDBClient
 
     print("\n1. Initializing orchestrator...")
     chromadb_client = ChromaDBClient()

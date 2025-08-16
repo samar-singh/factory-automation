@@ -2,9 +2,9 @@
 """Test attachment flow to debug empty filepath issue"""
 
 import asyncio
+import logging
 import os
 import tempfile
-import logging
 
 # Set up logging
 logging.basicConfig(
@@ -26,10 +26,10 @@ async def test_attachment_processing():
     logger.info(f"File exists: {os.path.exists(test_file)}")
 
     # Import after setup
-    from factory_automation.factory_database.vector_db import ChromaDBClient
     from factory_automation.factory_agents.orchestrator_v3_agentic import (
         AgenticOrchestratorV3,
     )
+    from factory_automation.factory_database.vector_db import ChromaDBClient
 
     # Initialize
     chromadb_client = ChromaDBClient()

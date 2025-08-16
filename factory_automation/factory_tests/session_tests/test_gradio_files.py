@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Test what Gradio file upload returns"""
 
-import gradio as gr
 import json
+
+import gradio as gr
 
 
 def test_file_upload(files):

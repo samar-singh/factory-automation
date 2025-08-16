@@ -182,25 +182,38 @@ class ReviewDecision(Base):
 
 class EmailPattern(Base):
     """Store email sender patterns for intelligent routing"""
+
     __tablename__ = "email_patterns"
-    
+
     id = Column(Integer, primary_key=True)
     sender_email = Column(String(255), nullable=False, index=True)
     recipient_email = Column(String(255), nullable=False)
     recipient_description = Column(Text)  # Store the email's purpose/description
-    intent_type = Column(String(50), nullable=False)  # NEW_ORDER, PAYMENT, INQUIRY, etc.
+    intent_type = Column(
+        String(50), nullable=False
+    )  # NEW_ORDER, PAYMENT, INQUIRY, etc.
     count = Column(Integer, default=1)
     confidence = Column(Float, default=0.5)
     last_seen = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+
     # Additional learning fields
     subject_keywords = Column(Text)  # JSON string of common keywords
     avg_response_time = Column(Float)  # Track response patterns
     auto_approved_count = Column(Integer, default=0)
     manual_review_count = Column(Integer, default=0)
-    
+
     __table_args__ = (
-        Index('idx_sender_recipient_intent', 'sender_email', 'recipient_email', 'intent_type'),
-        UniqueConstraint('sender_email', 'recipient_email', 'intent_type', name='uq_sender_recipient_intent'),
+        Index(
+            "idx_sender_recipient_intent",
+            "sender_email",
+            "recipient_email",
+            "intent_type",
+        ),
+        UniqueConstraint(
+            "sender_email",
+            "recipient_email",
+            "intent_type",
+            name="uq_sender_recipient_intent",
+        ),
     )

@@ -1,14 +1,21 @@
 """Human Interaction Manager for Manual Review Cases"""
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from ..factory_database.connection import get_db_session
+from sqlalchemy import text
+
+from ..factory_database.connection import engine, get_db_session
 from ..factory_database.models import Order, ReviewDecision
+from ..factory_models.order_models import (
+    BatchOperation,
+    QueuedRecommendation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +62,8 @@ class ReviewRequest:
     decision: Optional[str] = None
     alternative_items: List[Dict[str, Any]] = field(default_factory=list)
     order_id: Optional[str] = None  # Link to order
+    orchestrator_recommendation: Optional[str] = None  # AI's recommendation
+    recommended_action: Optional[str] = None  # Action suggested by orchestrator
 
 
 class HumanInteractionManager:
@@ -71,7 +80,10 @@ class HumanInteractionManager:
             set()
         )  # Track processed emails to avoid duplicates
 
-        logger.info("Initialized Human Interaction Manager")
+        # Database queue support
+        self.use_db_queue = True  # Flag to use database queue
+
+        logger.info("Initialized Human Interaction Manager with database queue support")
 
     async def create_review_request(
         self,
@@ -135,6 +147,9 @@ class HumanInteractionManager:
             search_results=search_results,
             priority=priority,
             image_matches=image_matches,
+            order_id=email_data.get("order_id"),
+            orchestrator_recommendation=email_data.get("orchestrator_recommendation"),
+            recommended_action=email_data.get("recommended_action"),
         )
 
         # Add to pending reviews
@@ -540,3 +555,348 @@ class HumanInteractionManager:
             if "session" in locals():
                 session.close()
             return []
+
+    # ========== Database Queue Methods ==========
+
+    def add_to_recommendation_queue(self, recommendation: QueuedRecommendation) -> str:
+        """Add a recommendation to the database queue"""
+
+        try:
+            with engine.connect() as conn:
+                # Insert into recommendation_queue table
+                query = text(
+                    """
+                    INSERT INTO recommendation_queue (
+                        queue_id, order_id, customer_email, 
+                        recommendation_type, recommendation_data,
+                        confidence_score, priority, status, created_at
+                    ) VALUES (
+                        :queue_id, :order_id, :customer_email,
+                        :recommendation_type, :recommendation_data,
+                        :confidence_score, :priority, :status, :created_at
+                    )
+                """
+                )
+
+                conn.execute(
+                    query,
+                    {
+                        "queue_id": recommendation.queue_id,
+                        "order_id": recommendation.order_id,
+                        "customer_email": recommendation.customer_email,
+                        "recommendation_type": recommendation.recommendation_type.value,
+                        "recommendation_data": json.dumps(
+                            recommendation.recommendation_data
+                        ),
+                        "confidence_score": recommendation.confidence_score,
+                        "priority": recommendation.priority.value,
+                        "status": recommendation.status,
+                        "created_at": recommendation.created_at,
+                    },
+                )
+                conn.commit()
+
+                logger.info(
+                    f"Added recommendation {recommendation.queue_id} to database queue"
+                )
+                return recommendation.queue_id
+
+        except Exception as e:
+            logger.error(f"Error adding to recommendation queue: {e}")
+            raise
+
+    def get_pending_recommendations(
+        self, limit: int = 50, priority_filter: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Get pending recommendations from database queue"""
+
+        try:
+            with engine.connect() as conn:
+                query = """
+                    SELECT queue_id, order_id, customer_email, 
+                           recommendation_type, recommendation_data,
+                           confidence_score, priority, status, 
+                           created_at, batch_id
+                    FROM recommendation_queue
+                    WHERE status = 'pending'
+                """
+
+                if priority_filter:
+                    query += " AND priority = :priority"
+
+                query += " ORDER BY "
+                query += "CASE priority "
+                query += "WHEN 'urgent' THEN 1 "
+                query += "WHEN 'high' THEN 2 "
+                query += "WHEN 'medium' THEN 3 "
+                query += "WHEN 'low' THEN 4 END, "
+                query += "created_at ASC "
+                query += f"LIMIT {limit}"
+
+                params = {}
+                if priority_filter:
+                    params["priority"] = priority_filter
+
+                result = conn.execute(text(query), params)
+
+                recommendations = []
+                for row in result:
+                    # Handle recommendation_data - it might be a dict (from JSONB) or a string
+                    rec_data = row[4]
+                    if rec_data:
+                        if isinstance(rec_data, str):
+                            rec_data = json.loads(rec_data)
+                        elif isinstance(rec_data, dict):
+                            rec_data = rec_data  # Already a dict from JSONB
+                        else:
+                            rec_data = {}
+                    else:
+                        rec_data = {}
+
+                    recommendations.append(
+                        {
+                            "queue_id": row[0],
+                            "order_id": row[1],
+                            "customer_email": row[2],
+                            "recommendation_type": row[3],
+                            "recommendation_data": rec_data,
+                            "confidence_score": row[5],
+                            "priority": row[6],
+                            "status": row[7],
+                            "created_at": row[8].isoformat() if row[8] else None,
+                            "batch_id": row[9],
+                        }
+                    )
+
+                return recommendations
+
+        except Exception as e:
+            logger.error(f"Error getting pending recommendations: {e}")
+            return []
+
+    def create_batch_from_queue(
+        self,
+        queue_ids: List[str],
+        batch_name: Optional[str] = None,
+        batch_type: str = "manual",
+    ) -> str:
+        """Create a batch from selected queue items"""
+
+        batch = BatchOperation(
+            batch_name=batch_name,
+            batch_type=batch_type,
+            total_items=len(queue_ids),
+            created_by="system",
+        )
+
+        try:
+            with engine.connect() as conn:
+                # Insert batch
+                query = text(
+                    """
+                    INSERT INTO batch_operations (
+                        batch_id, batch_name, batch_type, 
+                        total_items, status, created_at, created_by
+                    ) VALUES (
+                        :batch_id, :batch_name, :batch_type,
+                        :total_items, :status, :created_at, :created_by
+                    )
+                """
+                )
+
+                conn.execute(
+                    query,
+                    {
+                        "batch_id": batch.batch_id,
+                        "batch_name": batch.batch_name,
+                        "batch_type": batch.batch_type,
+                        "total_items": batch.total_items,
+                        "status": batch.status,
+                        "created_at": batch.created_at,
+                        "created_by": batch.created_by,
+                    },
+                )
+
+                # Update queue items with batch_id
+                update_query = text(
+                    """
+                    UPDATE recommendation_queue 
+                    SET batch_id = :batch_id, status = 'in_review'
+                    WHERE queue_id = ANY(:queue_ids)
+                """
+                )
+
+                conn.execute(
+                    update_query, {"batch_id": batch.batch_id, "queue_ids": queue_ids}
+                )
+
+                conn.commit()
+
+                logger.info(
+                    f"Created batch {batch.batch_id} with {len(queue_ids)} items"
+                )
+                return batch.batch_id
+
+        except Exception as e:
+            logger.error(f"Error creating batch: {e}")
+            raise
+
+    def get_batch_for_review(self, batch_id: str) -> Optional[Dict[str, Any]]:
+        """Get a batch with all its queue items for review"""
+
+        try:
+            with engine.connect() as conn:
+                # Get batch info
+                batch_query = text(
+                    """
+                    SELECT batch_id, batch_name, batch_type, total_items,
+                           status, created_at, created_by
+                    FROM batch_operations
+                    WHERE batch_id = :batch_id
+                """
+                )
+
+                batch_result = conn.execute(batch_query, {"batch_id": batch_id}).first()
+
+                if not batch_result:
+                    return None
+
+                # Get queue items in batch
+                items_query = text(
+                    """
+                    SELECT queue_id, order_id, customer_email,
+                           recommendation_type, recommendation_data,
+                           confidence_score, priority
+                    FROM recommendation_queue
+                    WHERE batch_id = :batch_id
+                    ORDER BY created_at
+                """
+                )
+
+                items_result = conn.execute(items_query, {"batch_id": batch_id})
+
+                items = []
+                for row in items_result:
+                    # Handle recommendation_data - it might be a dict (from JSONB) or a string
+                    rec_data = row[4]
+                    if rec_data:
+                        if isinstance(rec_data, str):
+                            rec_data = json.loads(rec_data)
+                        elif isinstance(rec_data, dict):
+                            rec_data = rec_data  # Already a dict from JSONB
+                        else:
+                            rec_data = {}
+                    else:
+                        rec_data = {}
+
+                    items.append(
+                        {
+                            "queue_id": row[0],
+                            "order_id": row[1],
+                            "customer_email": row[2],
+                            "recommendation_type": row[3],
+                            "recommendation_data": rec_data,
+                            "confidence_score": row[5],
+                            "priority": row[6],
+                        }
+                    )
+
+                return {
+                    "batch_id": batch_result[0],
+                    "batch_name": batch_result[1],
+                    "batch_type": batch_result[2],
+                    "total_items": batch_result[3],
+                    "status": batch_result[4],
+                    "created_at": (
+                        batch_result[5].isoformat() if batch_result[5] else None
+                    ),
+                    "created_by": batch_result[6],
+                    "items": items,
+                }
+
+        except Exception as e:
+            logger.error(f"Error getting batch for review: {e}")
+            return None
+
+    def approve_batch_items(
+        self,
+        batch_id: str,
+        approved_queue_ids: List[str],
+        rejected_queue_ids: List[str],
+        modifications: Dict[str, Any] = None,
+    ) -> bool:
+        """Approve or reject items in a batch"""
+
+        try:
+            with engine.connect() as conn:
+                # Update approved items
+                if approved_queue_ids:
+                    approve_query = text(
+                        """
+                        UPDATE recommendation_queue
+                        SET status = 'approved', 
+                            reviewed_at = NOW(),
+                            reviewed_by = :reviewer
+                        WHERE queue_id = ANY(:queue_ids)
+                    """
+                    )
+
+                    conn.execute(
+                        approve_query,
+                        {"queue_ids": approved_queue_ids, "reviewer": "human_reviewer"},
+                    )
+
+                # Update rejected items
+                if rejected_queue_ids:
+                    reject_query = text(
+                        """
+                        UPDATE recommendation_queue
+                        SET status = 'rejected',
+                            reviewed_at = NOW(),
+                            reviewed_by = :reviewer
+                        WHERE queue_id = ANY(:queue_ids)
+                    """
+                    )
+
+                    conn.execute(
+                        reject_query,
+                        {"queue_ids": rejected_queue_ids, "reviewer": "human_reviewer"},
+                    )
+
+                # Update batch status
+                batch_query = text(
+                    """
+                    UPDATE batch_operations
+                    SET approved_items = :approved,
+                        rejected_items = :rejected,
+                        modified_items = :modifications,
+                        status = 'processing',
+                        reviewed_at = NOW(),
+                        reviewed_by = :reviewer
+                    WHERE batch_id = :batch_id
+                """
+                )
+
+                conn.execute(
+                    batch_query,
+                    {
+                        "batch_id": batch_id,
+                        "approved": approved_queue_ids,
+                        "rejected": rejected_queue_ids,
+                        "modifications": (
+                            json.dumps(modifications) if modifications else "{}"
+                        ),
+                        "reviewer": "human_reviewer",
+                    },
+                )
+
+                conn.commit()
+
+                logger.info(
+                    f"Batch {batch_id} reviewed: {len(approved_queue_ids)} approved, {len(rejected_queue_ids)} rejected"
+                )
+                return True
+
+        except Exception as e:
+            logger.error(f"Error approving batch items: {e}")
+            return False

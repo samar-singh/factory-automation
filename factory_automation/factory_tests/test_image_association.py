@@ -20,15 +20,15 @@ def test_image_association_workflow():
     print("TESTING IMAGE ASSOCIATION WITH RAG SEARCH")
     print("=" * 60)
 
-    from factory_automation.factory_database.vector_db import ChromaDBClient
     from factory_automation.factory_database.image_storage import ImageStorageManager
+    from factory_automation.factory_database.vector_db import ChromaDBClient
+    from factory_automation.factory_rag.enhanced_search import EnhancedRAGSearch
     from factory_automation.factory_rag.intelligent_excel_ingestion import (
         IntelligentExcelIngestion,
     )
-    from factory_automation.factory_rag.enhanced_search import EnhancedRAGSearch
     from factory_automation.factory_ui.image_display_helper import (
-        format_search_result_with_image,
         create_image_gallery_html,
+        format_search_result_with_image,
     )
 
     # Test configuration

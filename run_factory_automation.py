@@ -129,8 +129,8 @@ def start_web_interface():
 
     import gradio as gr
 
-    from factory_automation.factory_ui.human_review_interface_improved import (
-        HumanReviewInterface,
+    from factory_automation.factory_ui.human_review_dashboard import (
+        HumanReviewDashboard,
     )
     from factory_automation.factory_ui.image_display_helper import (
         create_image_gallery_html,
@@ -150,7 +150,7 @@ def start_web_interface():
     human_manager = orchestrator.human_manager
 
     # Create review interface
-    review_interface = HumanReviewInterface(
+    review_interface = HumanReviewDashboard(
         interaction_manager=human_manager, chromadb_client=orchestrator.chromadb_client
     )
 
@@ -231,6 +231,7 @@ We need 1000 price tags for Allen Solly...
                 async def process_order_with_documents(email_body, files):
                     """Process a simulated order with automatic email extraction and document processing"""
                     import re
+
                     import pandas as pd
                     import PyPDF2
                     from PIL import Image
@@ -611,6 +612,7 @@ We need 1000 price tags for Allen Solly...
                                             # Convert base64 to PIL Image for display
                                             import base64
                                             from io import BytesIO
+
                                             from PIL import Image
 
                                             image_data = base64.b64decode(

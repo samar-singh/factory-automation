@@ -8,10 +8,10 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from factory_automation.factory_database.vector_db import ChromaDBClient
 from factory_automation.factory_rag.intelligent_excel_ingestion import (
     IntelligentExcelIngestion,
 )
-from factory_automation.factory_database.vector_db import ChromaDBClient
 
 
 def test_enhanced_ingestion():

@@ -5,8 +5,9 @@ Handles detection, prevention, and removal of duplicates in ChromaDB
 
 import hashlib
 import logging
-from typing import Dict, List, Any, Optional, Tuple
 from collections import defaultdict
+from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
 
 from ..factory_database.vector_db import ChromaDBClient

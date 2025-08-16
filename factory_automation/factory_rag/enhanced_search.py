@@ -6,8 +6,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 from rank_bm25 import BM25Okapi
 
-from ..factory_database.vector_db import ChromaDBClient
 from ..factory_database.image_storage import ImageStorageManager
+from ..factory_database.vector_db import ChromaDBClient
 from .embeddings_config import EmbeddingsManager
 from .reranker import CrossEncoderReranker, HybridReranker
 

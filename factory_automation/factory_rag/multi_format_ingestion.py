@@ -4,21 +4,21 @@ Supports: Excel, PDF, Word docs, Images (PNG, JPG)
 Uses optimal chunking strategies based on Chroma research
 """
 
-import io
 import base64
 import hashlib
+import io
 import logging
-from pathlib import Path
-from typing import Dict, List, Any, Optional
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 import numpy as np
-from PIL import Image
 import PyPDF2
 from docx import Document
+from PIL import Image
 
-from ..factory_database.vector_db import ChromaDBClient
 from ..factory_database.image_storage import ImageStorageManager
+from ..factory_database.vector_db import ChromaDBClient
 from .embeddings_config import EmbeddingsManager
 from .intelligent_excel_ingestion import IntelligentExcelIngestion
 

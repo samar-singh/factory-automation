@@ -2,9 +2,10 @@
 """Test intelligent ingestion with all Excel files in inventory folder"""
 
 import sys
-from pathlib import Path
-from dotenv import load_dotenv
 import time
+from pathlib import Path
+
+from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()

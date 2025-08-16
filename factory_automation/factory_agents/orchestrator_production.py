@@ -3,11 +3,11 @@
 import asyncio
 import logging
 import os
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
-from .orchestrator_v3_agentic import AgenticOrchestratorV3
-from .gmail_production_agent import GmailProductionAgent
 from ..factory_database.vector_db import ChromaDBClient
+from .gmail_production_agent import GmailProductionAgent
+from .orchestrator_v3_agentic import AgenticOrchestratorV3
 
 logger = logging.getLogger(__name__)
 

@@ -8,13 +8,14 @@ Usage:
     python ingest_inventory_data.py path/to/folder/     # Ingest all Excel files from folder
 """
 
-import sys
 import logging
+import sys
 from pathlib import Path
+
+from factory_automation.factory_database.vector_db import ChromaDBClient
 from factory_automation.factory_rag.intelligent_excel_ingestion import (
     IntelligentExcelIngestion,
 )
-from factory_automation.factory_database.vector_db import ChromaDBClient
 
 # Set up logging
 logging.basicConfig(

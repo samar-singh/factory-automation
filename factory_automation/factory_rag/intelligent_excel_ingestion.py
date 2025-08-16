@@ -13,8 +13,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 from ..factory_config.settings import settings
-from ..factory_database.vector_db import ChromaDBClient
 from ..factory_database.image_storage import ImageStorageManager
+from ..factory_database.vector_db import ChromaDBClient
 from .embeddings_config import EmbeddingsManager
 
 logger = logging.getLogger(__name__)
