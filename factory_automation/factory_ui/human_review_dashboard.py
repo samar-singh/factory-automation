@@ -4,6 +4,7 @@ Handles all pending order reviews with visual and text matching
 Consolidated from multiple review interfaces into single clean dashboard
 """
 
+import json
 import logging
 from datetime import datetime
 from typing import Optional
@@ -601,6 +602,12 @@ class HumanReviewDashboard:
                             elem_classes=["action-button"],
                             interactive=False,
                         )
+                        delete_btn = gr.Button(
+                            "🗑️ Delete",
+                            variant="stop",
+                            elem_classes=["action-button"],
+                            interactive=False,
+                        )
 
                     # Decision notes
                     decision_notes = gr.Textbox(
@@ -608,6 +615,30 @@ class HumanReviewDashboard:
                         placeholder="Add any notes about your decision...",
                         lines=2,
                         interactive=False,
+                    )
+                    
+                    # Email Response Section (for email_response type)
+                    gr.Markdown("### 📧 Email Response (Editable)")
+                    email_response_text = gr.Textbox(
+                        label="Email Body",
+                        placeholder="Email response will appear here when an email type order is selected...",
+                        lines=8,
+                        interactive=False,
+                        visible=False,
+                    )
+                    
+                    email_attachments = gr.File(
+                        label="Attachments (Optional)",
+                        file_count="multiple",
+                        interactive=False,
+                        visible=False,
+                    )
+                    
+                    send_email_btn = gr.Button(
+                        "📤 Send Email",
+                        variant="primary",
+                        interactive=False,
+                        visible=False,
                     )
 
                     # Result message
@@ -691,22 +722,22 @@ class HumanReviewDashboard:
                 import pandas as pd
 
                 if evt.index is None or table_data is None:
-                    return [gr.update()] * 9
+                    return [gr.update()] * 13  # Updated for new fields
 
                 # Handle DataFrame properly
                 if isinstance(table_data, pd.DataFrame):
                     if table_data.empty:
-                        return [gr.update()] * 9
+                        return [gr.update()] * 13  # Updated for new fields
                     # Convert DataFrame to list
                     table_data = table_data.values.tolist()
                 elif not table_data:
-                    return [gr.update()] * 9
+                    return [gr.update()] * 13  # Updated for new fields
 
                 try:
                     # Get selected row
                     row_idx = evt.index[0] if isinstance(evt.index, list) else evt.index
                     if row_idx >= len(table_data):
-                        return [gr.update()] * 9
+                        return [gr.update()] * 13  # Updated for new fields
 
                     selected_row = table_data[row_idx]
                     customer_key = selected_row[0]  # Customer email (truncated)
@@ -1353,6 +1384,13 @@ class HumanReviewDashboard:
                         )
 
                     matches_html += "</div>"
+                    
+                    # Extract email response if available
+                    email_response = ""
+                    show_email_fields = False
+                    if rec["recommendation_type"] == "email_response":
+                        email_response = rec_data.get("email_draft", {}).get("body", "")
+                        show_email_fields = True
 
                     return (
                         customer_html,
@@ -1361,14 +1399,18 @@ class HumanReviewDashboard:
                         gr.update(interactive=True),  # approve_btn
                         gr.update(interactive=True),  # defer_btn
                         gr.update(interactive=True),  # reject_btn
+                        gr.update(interactive=True),  # delete_btn
                         gr.update(interactive=True),  # decision_notes
+                        gr.update(value=email_response, interactive=show_email_fields, visible=show_email_fields),  # email_response_text
+                        gr.update(interactive=show_email_fields, visible=show_email_fields),  # email_attachments
+                        gr.update(interactive=show_email_fields, visible=show_email_fields),  # send_email_btn
                         "",  # Clear result message
                         rec["queue_id"],  # current_queue_id state
                     )
 
                 except Exception as e:
                     logger.error(f"Error displaying details: {e}")
-                    return [gr.update()] * 9
+                    return [gr.update()] * 13  # Updated count for new fields
 
             def process_decision(queue_id, decision_type, notes):
                 """Process the review decision"""
@@ -1381,27 +1423,55 @@ class HumanReviewDashboard:
                         "approve": "approved",
                         "defer": "deferred",
                         "reject": "rejected",
+                        "delete": "deleted",
                     }
 
-                    # Update database
-                    with engine.connect() as conn:
-                        query = text(
-                            """
-                            UPDATE recommendation_queue
-                            SET status = :status,
-                                reviewed_at = NOW(),
-                                reviewed_by = 'human_reviewer'
-                            WHERE queue_id = :queue_id
-                        """
-                        )
+                    if decision_type == "delete":
+                        # Delete from database
+                        with engine.connect() as conn:
+                            # First get the order_id
+                            get_order = text(
+                                "SELECT order_id FROM recommendation_queue WHERE queue_id = :queue_id"
+                            )
+                            result = conn.execute(get_order, {"queue_id": queue_id})
+                            order_id = result.scalar()
+                            
+                            # Delete from recommendation_queue
+                            delete_queue = text(
+                                "DELETE FROM recommendation_queue WHERE queue_id = :queue_id"
+                            )
+                            conn.execute(delete_queue, {"queue_id": queue_id})
+                            
+                            # Delete associated order if exists
+                            if order_id:
+                                delete_order = text(
+                                    "DELETE FROM orders WHERE order_id = :order_id"
+                                )
+                                conn.execute(delete_order, {"order_id": order_id})
+                            
+                            conn.commit()
+                        
+                        return f"🗑️ Item and associated order deleted from database!"
+                    else:
+                        # Update database with status
+                        with engine.connect() as conn:
+                            query = text(
+                                """
+                                UPDATE recommendation_queue
+                                SET status = :status,
+                                    reviewed_at = NOW(),
+                                    reviewed_by = 'human_reviewer'
+                                WHERE queue_id = :queue_id
+                                """
+                            )
 
-                        conn.execute(
-                            query,
-                            {"status": status_map[decision_type], "queue_id": queue_id},
-                        )
-                        conn.commit()
+                            conn.execute(
+                                query,
+                                {"status": status_map[decision_type], "queue_id": queue_id},
+                            )
+                            conn.commit()
 
-                    return f"✅ Item {status_map[decision_type]}! Notes: {notes if notes else 'None'}"
+                        return f"✅ Item {status_map[decision_type]}! Notes: {notes if notes else 'None'}"
 
                 except Exception as e:
                     logger.error(f"Error processing decision: {e}")
@@ -1449,6 +1519,74 @@ class HumanReviewDashboard:
                         gr.update(interactive=False),
                     )
 
+            def send_email_response(queue_id, email_body, attachments):
+                """Send the email response"""
+                if not queue_id:
+                    return "⚠️ No order selected"
+                
+                if not email_body or not email_body.strip():
+                    return "⚠️ Email body cannot be empty"
+                
+                try:
+                    # Get the recommendation details
+                    with engine.connect() as conn:
+                        query = text(
+                            """
+                            SELECT customer_email, recommendation_data
+                            FROM recommendation_queue
+                            WHERE queue_id = :queue_id
+                            """
+                        )
+                        result = conn.execute(query, {"queue_id": queue_id})
+                        row = result.fetchone()
+                        
+                        if not row:
+                            return "❌ Order not found"
+                        
+                        customer_email = row[0]
+                        
+                        # TODO: Integrate with actual email sending service
+                        # For now, just save the email and mark as sent
+                        update_query = text(
+                            """
+                            UPDATE recommendation_queue
+                            SET status = 'email_sent',
+                                reviewed_at = NOW(),
+                                reviewed_by = 'human_reviewer',
+                                recommendation_data = jsonb_set(
+                                    COALESCE(recommendation_data, '{}'::jsonb),
+                                    '{email_sent}',
+                                    :email_data::jsonb
+                                )
+                            WHERE queue_id = :queue_id
+                            """
+                        )
+                        
+                        email_data = {
+                            "body": email_body,
+                            "attachments": len(attachments) if attachments else 0,
+                            "sent_at": datetime.now().isoformat(),
+                            "to": customer_email
+                        }
+                        
+                        conn.execute(
+                            update_query,
+                            {
+                                "queue_id": queue_id,
+                                "email_data": json.dumps(email_data)
+                            }
+                        )
+                        conn.commit()
+                    
+                    # In production, integrate with Gmail API here
+                    # gmail_service.send_email(to=customer_email, body=email_body, attachments=attachments)
+                    
+                    return f"✅ Email sent to {customer_email}! (Note: Email integration pending - saved to database)"
+                    
+                except Exception as e:
+                    logger.error(f"Error sending email: {e}")
+                    return f"❌ Error: {str(e)}"
+            
             def process_selected_batch(selected_items, selected_match_id):
                 """Process the selected batch items"""
                 if not selected_items:
@@ -1633,7 +1771,11 @@ class HumanReviewDashboard:
                     approve_btn,
                     defer_btn,
                     reject_btn,
+                    delete_btn,
                     decision_notes,
+                    email_response_text,
+                    email_attachments,
+                    send_email_btn,
                     result_message,
                     current_queue_id,
                 ],
@@ -1709,6 +1851,42 @@ class HumanReviewDashboard:
             reject_btn.click(
                 fn=lambda qid, notes: process_decision(qid, "reject", notes),
                 inputs=[current_queue_id, decision_notes],
+                outputs=[result_message],
+            ).then(
+                fn=refresh_queue,
+                inputs=[priority_filter],
+                outputs=[
+                    queue_table,
+                    queue_count,
+                    pending_count,
+                    urgent_count,
+                    avg_confidence,
+                    batch_btn,
+                    clear_btn,
+                ],
+            )
+            
+            delete_btn.click(
+                fn=lambda qid, notes: process_decision(qid, "delete", notes),
+                inputs=[current_queue_id, decision_notes],
+                outputs=[result_message],
+            ).then(
+                fn=refresh_queue,
+                inputs=[priority_filter],
+                outputs=[
+                    queue_table,
+                    queue_count,
+                    pending_count,
+                    urgent_count,
+                    avg_confidence,
+                    batch_btn,
+                    clear_btn,
+                ],
+            )
+            
+            send_email_btn.click(
+                fn=send_email_response,
+                inputs=[current_queue_id, email_response_text, email_attachments],
                 outputs=[result_message],
             ).then(
                 fn=refresh_queue,
