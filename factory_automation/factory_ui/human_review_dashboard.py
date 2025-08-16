@@ -295,20 +295,20 @@ class HumanReviewDashboard:
             border-bottom: 1px solid var(--border-color);
             vertical-align: middle;
             color: var(--text-primary) !important;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            word-wrap: break-word;
+            white-space: normal;
         }
         
-        /* Responsive column widths */
-        .match-table th:nth-child(1), .match-table td:nth-child(1) { width: 5%; }  /* Select */
-        .match-table th:nth-child(2), .match-table td:nth-child(2) { width: 10%; } /* Image */
-        .match-table th:nth-child(3), .match-table td:nth-child(3) { width: 12%; } /* Tag Code */
-        .match-table th:nth-child(4), .match-table td:nth-child(4) { width: 18%; } /* Name */
+        /* Responsive column widths - adjusted for full text display */
+        .match-table th:nth-child(1), .match-table td:nth-child(1) { width: 4%; }  /* Select */
+        .match-table th:nth-child(2), .match-table td:nth-child(2) { width: 8%; }  /* Image */
+        .match-table th:nth-child(3), .match-table td:nth-child(3) { width: 10%; } /* Tag Code */
+        .match-table th:nth-child(4), .match-table td:nth-child(4) { width: 25%; } /* Name - increased */
         .match-table th:nth-child(5), .match-table td:nth-child(5) { width: 10%; } /* Brand */
-        .match-table th:nth-child(6), .match-table td:nth-child(6) { width: 8%; }  /* Type */
-        .match-table th:nth-child(7), .match-table td:nth-child(7) { width: 12%; } /* Confidence */
-        .match-table th:nth-child(8), .match-table td:nth-child(8) { width: 10%; } /* Status */
-        .match-table th:nth-child(9), .match-table td:nth-child(9) { width: 15%; } /* Source */
+        .match-table th:nth-child(6), .match-table td:nth-child(6) { width: 6%; }  /* Type */
+        .match-table th:nth-child(7), .match-table td:nth-child(7) { width: 10%; } /* Confidence */
+        .match-table th:nth-child(8), .match-table td:nth-child(8) { width: 7%; }  /* Status */
+        .match-table th:nth-child(9), .match-table td:nth-child(9) { width: 20%; } /* Source - increased */
         
         .match-table tr:hover {
             background: var(--hover-bg);
@@ -728,7 +728,7 @@ class HumanReviewDashboard:
                         </div>
                         <div class="info-row">
                             <span class="label">Queue ID:</span>
-                            <span class="value" style="font-family:monospace;">{rec["queue_id"][:20]}...</span>
+                            <span class="value" style="font-family:monospace; word-break: break-all;">{rec["queue_id"]}</span>
                         </div>
                         <div class="info-row">
                             <span class="label">Priority:</span>
@@ -866,7 +866,7 @@ class HumanReviewDashboard:
                             <span class="label">Type:</span>
                             <span class="value">{rec["recommendation_type"]}</span>
                         </div>
-                        {email_body and f'<div class="info-row"><span class="label">Email Preview:</span><span class="value" style="font-style:italic;">{email_body}...</span></div>' or ''}
+                        {email_body and f'<div class="info-row"><span class="label">Email Preview:</span><span class="value" style="font-style:italic; white-space: pre-wrap;">{email_body}</span></div>' or ''}
                     </div>
                     
                     {documents_html and f'<div class="card"><h4>📁 Documents & Attachments</h4>{documents_html}</div>' or ''}
@@ -1278,9 +1278,9 @@ class HumanReviewDashboard:
                                          }})(event)" />
                                 </td>
                                 <td><strong style="font-family: monospace; font-size: 0.9em;">{tag_code or "N/A"}</strong></td>
-                                <td title="{match.get('name', 'N/A')}">{match.get("name", "N/A")[:20]}{'...' if len(match.get("name", "")) > 20 else ''}</td>
-                                <td>{match.get("brand", match.get('metadata', {}).get('brand', "N/A"))[:10]}</td>
-                                <td>{match.get("tag_type", match.get('metadata', {}).get('tag_type', "N/A"))[:8]}</td>
+                                <td style="word-wrap: break-word; max-width: 200px;">{match.get("name", "N/A")}</td>
+                                <td>{match.get("brand", match.get('metadata', {}).get('brand', "N/A"))}</td>
+                                <td>{match.get("tag_type", match.get('metadata', {}).get('tag_type', "N/A"))}</td>
                                 <td>
                                     <div style="display: flex; align-items: center; gap: 4px;">
                                         <div style="width: 40px; background: #e5e7eb; border-radius: 8px; height: 16px;">
@@ -1294,8 +1294,8 @@ class HumanReviewDashboard:
                                 <td style="font-weight: 600; color: {'#dc2626' if confidence < 0.6 else '#f59e0b' if confidence < 0.8 else '#059669'}; font-size: 0.85em;">
                                     {'Low' if confidence < 0.6 else 'Med' if confidence < 0.8 else 'Good'}
                                 </td>
-                                <td title="{source_doc}" style="font-size: 0.75em;">
-                                    {source_doc[:15]}{'...' if len(source_doc) > 15 else ''}
+                                <td style="font-size: 0.85em; word-wrap: break-word; max-width: 250px;">
+                                    {source_doc}
                                 </td>
                             </tr>
                             """
