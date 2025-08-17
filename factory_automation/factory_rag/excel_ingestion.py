@@ -110,9 +110,17 @@ class ExcelInventoryIngestion:
             return 0
 
         try:
+            # Handle float values first
+            if isinstance(value, (int, float)):
+                return int(value)
+            
             # Remove any commas and convert to int
-            return int(str(value).replace(",", ""))
-        except ValueError:
+            # Also handle decimal points by converting to float first
+            clean_value = str(value).replace(",", "")
+            if "." in clean_value:
+                return int(float(clean_value))
+            return int(clean_value)
+        except (ValueError, TypeError):
             logger.warning(f"Could not parse stock value: {value}")
             return 0
 
@@ -263,161 +271,234 @@ class ExcelInventoryIngestion:
         return hashlib.md5(content.encode()).hexdigest()
 
     def ingest_excel_file(
-        self, file_path: str, batch_size: int = 100
+        self, file_path: str, batch_size: int = 100, sheet_name: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Ingest a single Excel file into ChromaDB with Stella embeddings"""
+        """Ingest a single Excel file into ChromaDB with Stella embeddings
+        
+        Args:
+            file_path: Path to Excel file
+            batch_size: Number of items to process at once
+            sheet_name: Specific sheet to ingest (None = all sheets)
+        """
         logger.info(f"Ingesting Excel file: {file_path}")
 
         try:
-            # Read Excel file - first try with default header
-            df = pd.read_excel(file_path)
+            # Check available sheets first
+            xl_file = pd.ExcelFile(file_path)
+            available_sheets = xl_file.sheet_names
+            logger.info(f"Available sheets: {available_sheets}")
+            
+            # Determine which sheets to process
+            if sheet_name:
+                sheets_to_process = [sheet_name] if sheet_name in available_sheets else []
+            else:
+                # Process all sheets
+                sheets_to_process = available_sheets
+            
+            all_results = {
+                "status": "success",
+                "file": file_path,
+                "sheets_processed": [],
+                "total_items_ingested": 0,
+                "embedding_model": self.embeddings_manager.model_name,
+            }
+            
+            for sheet in sheets_to_process:
+                logger.info(f"Processing sheet: {sheet}")
+                
+                # Read Excel sheet - first try with default header
+                df = pd.read_excel(file_path, sheet_name=sheet)
 
-            # Check if any column is a datetime object (indicates header might be in wrong row)
-            has_datetime_column = any(
-                isinstance(col, pd.Timestamp) or hasattr(col, "date")
-                for col in df.columns
-            )
-
-            # Also check if columns are mostly unnamed (another indicator of wrong header)
-            unnamed_columns = sum(1 for col in df.columns if "Unnamed" in str(col))
-            total_columns = len(df.columns)
-            mostly_unnamed = unnamed_columns > total_columns / 2
-
-            # Check if file is PETER ENGLAND (specific case)
-            is_peter_england = "PETER ENGLAND" in file_path.upper()
-
-            # Don't re-read if columns look reasonable
-            has_name_column = any("NAME" in str(col).upper() for col in df.columns)
-
-            if (has_datetime_column or is_peter_england) and not has_name_column:
-                logger.info("Detected header issue, re-reading with header=1")
-                # Re-read with header in second row
-                df = pd.read_excel(file_path, header=1)
-            elif mostly_unnamed and not has_name_column:
-                logger.info("Many unnamed columns, checking if header is in wrong row")
-                # Check if first row contains actual headers
-                first_row = df.iloc[0]
-                if any(
-                    "NAME" in str(val).upper()
-                    for val in first_row.values
-                    if pd.notna(val)
-                ):
-                    logger.info(
-                        "Found headers in first data row, re-reading with header=1"
-                    )
-                    df = pd.read_excel(file_path, header=1)
-
-            # Normalize columns
-            df = self._normalize_column_names(df)
-
-            # Extract brand from filename
-            brand = self._extract_brand_from_filename(os.path.basename(file_path))
-
-            # Prepare documents for ChromaDB
-            documents = []
-            metadatas = []
-            ids = []
-            id_counter = {}  # Track duplicate IDs
-
-            for idx, row in df.iterrows():
-                # Skip rows with no meaningful data
-                if "name" not in row or pd.isna(row.get("name")):
-                    continue
-
-                # Create searchable text optimized for Stella
-                text = self._create_searchable_text(row, brand)
-
-                # Create metadata
-                metadata = {
-                    "brand": brand,
-                    "excel_source": os.path.basename(file_path),
-                    "row_index": idx,
-                    "stock": self._clean_stock_value(row.get("stock", 0)),
-                }
-
-                # Add optional fields if they exist
-                if "code" in row and pd.notna(row["code"]):
-                    metadata["trim_code"] = str(row["code"]).strip()
-                if "name" in row and pd.notna(row["name"]):
-                    metadata["trim_name"] = str(row["name"]).strip()
-                if "image" in row and pd.notna(row["image"]):
-                    metadata["has_image"] = True
-                    metadata["image_ref"] = str(row["image"])
-                else:
-                    metadata["has_image"] = False
-                if "COLOUR" in row and pd.notna(row["COLOUR"]):
-                    metadata["colour"] = str(row["COLOUR"]).strip()
-                if "brand" in row and pd.notna(row["brand"]):
-                    # Override file-based brand with Excel data brand
-                    metadata["brand"] = str(row["brand"]).strip()
-
-                # Create document ID (include row index for uniqueness)
-                row_with_index = row.copy()
-                row_with_index["row_index"] = idx
-                doc_id = self._create_document_id(row_with_index, brand)
-
-                # Handle duplicate IDs by appending counter
-                if doc_id in id_counter:
-                    id_counter[doc_id] += 1
-                    doc_id = f"{doc_id}_{id_counter[doc_id]}"
-                else:
-                    id_counter[doc_id] = 0
-
-                documents.append(text)
-                metadatas.append(metadata)
-                ids.append(doc_id)
-
-            # Process in batches and add to ChromaDB
-            if documents:
-                total_added = 0
-                for i in range(0, len(documents), batch_size):
-                    batch_docs = documents[i : i + batch_size]
-                    batch_metas = metadatas[i : i + batch_size]
-                    batch_ids = ids[i : i + batch_size]
-
-                    # Generate embeddings using Stella
-                    embeddings = self.embeddings_manager.encode_documents(batch_docs)
-
-                    # Add to ChromaDB with custom embeddings
-                    self.chroma_client.collection.add(
-                        documents=batch_docs,
-                        metadatas=batch_metas,
-                        ids=batch_ids,
-                        embeddings=embeddings.tolist(),
-                    )
-
-                    total_added += len(batch_docs)
-                    logger.info(
-                        f"Added batch {i//batch_size + 1}, total: {total_added}/{len(documents)}"
-                    )
-
-                logger.info(
-                    f"Successfully ingested {len(documents)} items from {file_path}"
+                # Check if any column is a datetime object (indicates header might be in wrong row)
+                has_datetime_column = any(
+                    isinstance(col, pd.Timestamp) or hasattr(col, "date")
+                    for col in df.columns
                 )
 
-                return {
-                    "status": "success",
-                    "file": file_path,
-                    "items_ingested": len(documents),
-                    "brand": brand,
-                    "embedding_model": self.embeddings_manager.model_name,
-                }
-            else:
-                logger.warning(f"No valid items found in {file_path}")
-                return {
-                    "status": "warning",
-                    "file": file_path,
-                    "items_ingested": 0,
-                    "brand": brand,
-                    "message": "No valid items found",
-                }
+                # Also check if columns are mostly unnamed (another indicator of wrong header)
+                unnamed_columns = sum(1 for col in df.columns if "Unnamed" in str(col))
+                total_columns = len(df.columns)
+                mostly_unnamed = unnamed_columns > total_columns / 2
+
+                # Check if file is PETER ENGLAND (specific case)
+                is_peter_england = "PETER ENGLAND" in file_path.upper()
+
+                # Don't re-read if columns look reasonable
+                has_name_column = any("NAME" in str(col).upper() for col in df.columns)
+
+                if (has_datetime_column or is_peter_england) and not has_name_column:
+                    logger.info("Detected header issue, re-reading with header=1")
+                    # Re-read with header in second row
+                    df = pd.read_excel(file_path, sheet_name=sheet, header=1)
+                elif mostly_unnamed and not has_name_column:
+                    logger.info("Many unnamed columns, checking if header is in wrong row")
+                    # Check if first row contains actual headers
+                    first_row = df.iloc[0]
+                    if any(
+                        "NAME" in str(val).upper()
+                        for val in first_row.values
+                        if pd.notna(val)
+                    ):
+                        logger.info(
+                            "Found headers in first data row, re-reading with header=1"
+                        )
+                        df = pd.read_excel(file_path, sheet_name=sheet, header=1)
+                
+                # Handle merged cells for Sheet2 (common pattern in inventory files)
+                if sheet.lower() == 'sheet2' or 'sheet2' in sheet.lower():
+                    logger.info(f"Detected Sheet2, checking for merged cells...")
+                    
+                    # Check if TRIM NAME column has many NaN values (indicates merged cells)
+                    if 'TRIM NAME' in df.columns:
+                        nan_count = df['TRIM NAME'].isna().sum()
+                        total_rows = len(df)
+                        if nan_count > total_rows * 0.5:  # More than 50% NaN likely means merged cells
+                            logger.info(f"Found {nan_count}/{total_rows} NaN values in TRIM NAME, applying forward fill for merged cells")
+                            df['TRIM NAME'] = df['TRIM NAME'].fillna(method='ffill')
+                    
+                    # Also handle other columns that might have merged cells
+                    for col in ['NAME', 'ITEM NAME', 'PRODUCT NAME']:
+                        if col in df.columns:
+                            nan_count = df[col].isna().sum()
+                            if nan_count > len(df) * 0.5:
+                                logger.info(f"Applying forward fill to {col} column")
+                                df[col] = df[col].fillna(method='ffill')
+
+                # Normalize columns
+                df = self._normalize_column_names(df)
+
+                # Extract brand from filename
+                brand = self._extract_brand_from_filename(os.path.basename(file_path))
+
+                # Prepare documents for ChromaDB
+                documents = []
+                metadatas = []
+                ids = []
+                id_counter = {}  # Track duplicate IDs
+
+                for idx, row in df.iterrows():
+                    # Skip rows with no meaningful data
+                    if "name" not in row or pd.isna(row.get("name")):
+                        continue
+
+                    # Create searchable text optimized for Stella
+                    text = self._create_searchable_text(row, brand)
+
+                    # Create metadata
+                    metadata = {
+                        "brand": brand,
+                        "excel_source": os.path.basename(file_path),
+                        "sheet": sheet,  # Add sheet name to metadata
+                        "row_index": idx,
+                        "stock": self._clean_stock_value(row.get("stock", 0)),
+                    }
+
+                    # Add optional fields if they exist
+                    if "code" in row and pd.notna(row["code"]):
+                        metadata["trim_code"] = str(row["code"]).strip()
+                        metadata["tag_code"] = str(row["code"]).strip()  # Add tag_code for compatibility
+                    if "name" in row and pd.notna(row["name"]):
+                        metadata["trim_name"] = str(row["name"]).strip()
+                        metadata["tag_name"] = str(row["name"]).strip()  # Add tag_name for compatibility
+                    if "image" in row and pd.notna(row["image"]):
+                        metadata["has_image"] = True
+                        metadata["image_ref"] = str(row["image"])
+                    else:
+                        metadata["has_image"] = False
+                    if "COLOUR" in row and pd.notna(row["COLOUR"]):
+                        metadata["colour"] = str(row["COLOUR"]).strip()
+                    
+                    # Add size and quantity for Sheet2 data
+                    if "SIZE" in df.columns and pd.notna(row.get("SIZE")):
+                        metadata["size"] = str(row["SIZE"]).strip()
+                    
+                    # Handle quantity - it might be in QTY column or already in stock
+                    if "QTY" in df.columns and pd.notna(row.get("QTY")):
+                        qty_value = self._clean_stock_value(row["QTY"])
+                        metadata["quantity"] = str(qty_value)
+                        metadata["QTY"] = str(qty_value)  # Keep both for compatibility
+                    elif "stock" in row and pd.notna(row.get("stock")):
+                        # If QTY column doesn't exist but stock does, use stock as quantity
+                        metadata["quantity"] = str(metadata["stock"])
+                        metadata["QTY"] = str(metadata["stock"])
+                    
+                    if "brand" in row and pd.notna(row["brand"]):
+                        # Override file-based brand with Excel data brand
+                        metadata["brand"] = str(row["brand"]).strip()
+
+                    # Create document ID (include sheet and row index for uniqueness)
+                    row_with_index = row.copy()
+                    row_with_index["row_index"] = idx
+                    doc_id = f"{sheet}_{self._create_document_id(row_with_index, brand)}"
+
+                    # Handle duplicate IDs by appending counter
+                    if doc_id in id_counter:
+                        id_counter[doc_id] += 1
+                        doc_id = f"{doc_id}_{id_counter[doc_id]}"
+                    else:
+                        id_counter[doc_id] = 0
+
+                    documents.append(text)
+                    metadatas.append(metadata)
+                    ids.append(doc_id)
+
+                # Process in batches and add to ChromaDB for this sheet
+                if documents:
+                    sheet_added = 0
+                    for i in range(0, len(documents), batch_size):
+                        batch_docs = documents[i : i + batch_size]
+                        batch_metas = metadatas[i : i + batch_size]
+                        batch_ids = ids[i : i + batch_size]
+
+                        # Generate embeddings using Stella
+                        embeddings = self.embeddings_manager.encode_documents(batch_docs)
+
+                        # Add to ChromaDB with custom embeddings
+                        self.chroma_client.collection.add(
+                            documents=batch_docs,
+                            metadatas=batch_metas,
+                            ids=batch_ids,
+                            embeddings=embeddings.tolist(),
+                        )
+
+                        sheet_added += len(batch_docs)
+                        logger.info(
+                            f"Sheet {sheet}: Added batch {i//batch_size + 1}, total: {sheet_added}/{len(documents)}"
+                        )
+
+                    logger.info(
+                        f"Successfully ingested {len(documents)} items from {file_path} - {sheet}"
+                    )
+                    
+                    all_results["sheets_processed"].append({
+                        "sheet": sheet,
+                        "items_ingested": len(documents)
+                    })
+                    all_results["total_items_ingested"] += len(documents)
+                else:
+                    logger.warning(f"No valid items found in {file_path} - {sheet}")
+                    all_results["sheets_processed"].append({
+                        "sheet": sheet,
+                        "items_ingested": 0,
+                        "message": "No valid items found"
+                    })
+            
+            # Add brand to results
+            all_results["brand"] = self._extract_brand_from_filename(os.path.basename(file_path))
+            
+            return all_results
 
         except Exception as e:
             logger.error(f"Error ingesting {file_path}: {e}")
             return {"status": "error", "file": file_path, "error": str(e)}
 
-    def ingest_inventory_folder(self, folder_path: str) -> List[Dict[str, Any]]:
-        """Ingest all Excel files from inventory folder"""
+    def ingest_inventory_folder(self, folder_path: str, include_sheet2: bool = True) -> List[Dict[str, Any]]:
+        """Ingest all Excel files from inventory folder
+        
+        Args:
+            folder_path: Path to folder containing Excel files
+            include_sheet2: Whether to process Sheet2 (handles merged cells automatically)
+        """
         results = []
 
         # Find all Excel files
@@ -426,7 +507,9 @@ class ExcelInventoryIngestion:
 
         for file in os.listdir(folder_path):
             if any(file.lower().endswith(ext) for ext in excel_extensions):
-                excel_files.append(os.path.join(folder_path, file))
+                # Skip temporary Excel files that start with ~$
+                if not file.startswith('~$'):
+                    excel_files.append(os.path.join(folder_path, file))
 
         logger.info(f"Found {len(excel_files)} Excel files to ingest")
 
@@ -437,9 +520,15 @@ class ExcelInventoryIngestion:
 
         # Summary
         total_items = sum(
-            r.get("items_ingested", 0) for r in results if r["status"] == "success"
+            r.get("total_items_ingested", r.get("items_ingested", 0)) 
+            for r in results if r.get("status") == "success"
         )
-        logger.info(f"Total items ingested: {total_items}")
+        total_sheets = sum(
+            len(r.get("sheets_processed", [])) 
+            for r in results if r.get("status") == "success"
+        )
+        
+        logger.info(f"Total items ingested: {total_items} from {total_sheets} sheets")
 
         return results
 

@@ -11,7 +11,7 @@ Building an automated system for a garment price tag manufacturing factory to:
 - Track payments (UTR/cheques)
 - Provide real-time dashboard
 
-## Current Status (Last Updated: 2025-01-15 Evening)
+## Current Status (Last Updated: 2025-08-17 Morning)
 
 ### GitHub Repository
 
@@ -38,7 +38,8 @@ Building an automated system for a garment price tag manufacturing factory to:
 3. **RAG-Based Inventory System**
    - **Stella-400M embeddings**: Primary (1024 dimensions, 54-79% accuracy)
    - **All-MiniLM-L6-v2**: Fallback (384 dimensions, 43-58% accuracy)
-   - **478 items ingested** from 12 Excel files
+   - **1,184 items ingested** from 12 Excel files (20 sheets total)
+   - **Multi-sheet support**: Handles Sheet1 and Sheet2 with merged cells
    - **Natural language search** with confidence scoring
    - **Multi-model support** via EmbeddingsManager
 
@@ -69,7 +70,34 @@ Building an automated system for a garment price tag manufacturing factory to:
    - Interactive testing tools
    - Code formatting with black/ruff/isort
 
-### Recent Updates (2025-01-15 Evening) 🆕
+### Recent Updates (2025-08-17 Morning) 🆕
+
+**Session 17 - Multi-Sheet Excel Ingestion with Merged Cell Support:**
+- ✅ **Enhanced Excel Ingestion Logic**: Updated `excel_ingestion.py` to process all sheets in Excel files
+- ✅ **Merged Cell Handling**: Implemented forward-fill strategy for Sheet2 data with merged cells
+- ✅ **FM STOCK Sheet2 Support**: Successfully ingested 105 items from FM STOCK Sheet2
+- ✅ **Complete Data Reingestion**: 1,184 total items from 20 sheets across 12 Excel files
+- ✅ **Verified AS RELAXED CROP WB**: All 10 size variations (26-44) properly ingested with quantities
+- ✅ **Fixed Stock/Quantity Mapping**: Properly maps QTY column to quantity field in metadata
+
+### Previous Session Updates (2025-08-16 Evening)
+
+**Session 16 - UI Enhancements and Data Ingestion Fixes:**
+- ✅ **Enhanced Card Visibility**: Added gradient backgrounds to Customer Info and AI Recommendation cards
+  - Customer Info: Purple gradient (#667eea → #764ba2)
+  - AI Recommendation: Pink gradient (#f093fb → #f5576c)
+  - Applied inline styles to bypass Gradio CSS limitations
+- ✅ **Updated Inventory Table Structure**: 
+  - Removed Type column
+  - Added Size and Quantity columns to match Excel structure
+- ✅ **Fixed Merged Cell Data Ingestion**:
+  - Discovered Excel uses merged cells for item names
+  - Implemented forward-fill strategy to handle merged cells
+  - Successfully ingested 295 items from Sheet2 including all size variations
+- ✅ **AS RELAXED CROP WB Data Fix**:
+  - Identified missing data issue (Sheet2 wasn't ingested)
+  - Ingested all 10 size variations (26-44) with tag codes TBALTAG0392N-TBALTAG0401N
+  - Verified data completeness in ChromaDB
 
 **Session 15 - UI Fixes and Human Review Enhancements:**
 - ✅ **Fixed Human Review Image Display**: Now shows actual inventory images from ChromaDB (not placeholders)
@@ -168,6 +196,16 @@ Building an automated system for a garment price tag manufacturing factory to:
 
 ### Next Priority Tasks 📋
 
+1. **Enhance Inventory Display**
+   - Add sorting capabilities to inventory matches table
+   - Display stock availability status based on quantity
+   - Add filters for size and brand
+
+3. **Fix Remaining UI Issues**
+   - Ensure gradient cards display properly in all browsers
+   - Add loading states for data fetching
+   - Improve mobile responsiveness
+
 1. **Implement Human Review System** (As per HUMAN_INTERFACE_IMPLEMENTATION_PLAN.md)
    - Build recommendation queue in PostgreSQL
    - Create batch processing system
@@ -231,8 +269,8 @@ Building an automated system for a garment price tag manufacturing factory to:
 
 - **Search Accuracy**: 54-79% (Stella) vs 43-58% (MiniLM)
 - **Query Time**: 2.4s (Stella) vs 0.1s (MiniLM)
-- **Inventory Size**: 478 items across 12 brands
-- **Ingestion Success**: 10/12 Excel files processed
+- **Inventory Size**: 1,184 items across 12 brands (20 sheets)
+- **Ingestion Success**: 12/12 Excel files processed (all sheets)
 - **Confidence Thresholds**:
   - Auto-approve: >80%
   - Manual review: 60-80%

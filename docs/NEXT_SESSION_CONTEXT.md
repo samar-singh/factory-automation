@@ -1,237 +1,165 @@
 # Next Session Context
 
-## What Was Just Completed (Session 15)
+## Last Updated: August 16, 2025, 10:00 PM
 
-### UI Fixes and Human Review Enhancements
-- ✅ Fixed human review UI to display actual inventory images from ChromaDB
-- ✅ Implemented click-to-zoom functionality for tag images  
-- ✅ Resolved all table formatting issues (duplicate headers, font colors, radio buttons)
-- ✅ Fixed database foreign key constraints for order processing
-- ✅ Made Process Selected Batch button always visible with proper styling
+## What Was Just Completed (Session 16)
+
+### UI Enhancements:
+1. **Fixed Card Visibility**: Added gradient backgrounds to Customer Information and AI Recommendation cards using inline styles to bypass Gradio CSS limitations
+2. **Updated Inventory Table**: Removed Type column, added Size and Quantity columns to match Excel structure
+3. **Enhanced Visual Design**: Purple gradient for Customer Info, Pink gradient for AI Recommendations
+
+### Data Ingestion Fixes:
+1. **Discovered Merged Cell Issue**: Excel Sheet2 uses merged cells for item names spanning multiple rows
+2. **Fixed AS RELAXED CROP WB Data**: Properly ingested all 10 size variations (26-44) with tag codes TBALTAG0392N-TBALTAG0401N
+3. **Ingested Sheet2 Data**: Successfully added 295 items from Sheet2 using forward-fill strategy for merged cells
 
 ## Current System State
 
-### Working Features
-1. **Human Review Interface** (FULLY OPERATIONAL)
-   - Actual inventory images display from ChromaDB
-   - Click-to-zoom modal for image inspection
-   - Proper table formatting with visible radio buttons
-   - Process Selected Batch functionality
-   - Color-coded confidence scores
+### Application Status:
+- **Running**: http://127.0.0.1:7860
+- **All Services Active**: ChromaDB, PostgreSQL, Gradio UI
+- **Background Process**: bash_74 (if still running)
 
-2. **Order Processing**
-   - AI extraction from emails and attachments
-   - PDF and Excel processing with image extraction
-   - Inventory search with Stella-400M embeddings
-   - Visual similarity search with CLIP
-   - Orders properly saved before creating review entries
+### Database State:
+- **ChromaDB**: Contains 295 items from Sheet2 with proper size/quantity data
+- **PostgreSQL**: 23 pending items in recommendation_queue
+- **Collections**: tag_inventory_stella (1024-dim embeddings)
 
-3. **Database Integration**
-   - PostgreSQL with proper foreign key relationships
-   - ChromaDB with base64 image storage
-   - Recommendation queue for human review items
-   - Pattern learning from sender history
-
-### Known Issues
-- Ruff linting: 2 E722 errors (bare except) in image_storage.py
-- Mypy: 122 type errors (non-critical)
-- Gmail live connection pending (needs IT approval)
+### UI State:
+- **Human Review Dashboard**: Fully functional with gradient cards
+- **Inventory Table**: Shows Size and Quantity columns
+- **Image Modals**: Click-to-zoom functionality working
 
 ## How to Test the System
 
-### Quick Start
+### 1. Start the Application:
 ```bash
-# 1. Activate environment
 source .venv/bin/activate
-
-# 2. Set API keys
-export OPENAI_API_KEY='your-key-here'
-export TOGETHER_API_KEY='your-key-here'  # Optional for Qwen2.5VL
-
-# 3. Run the application
 python3 -m dotenv run -- python3 run_factory_automation.py
-
-# 4. Access at http://127.0.0.1:7860 (or 7861 if port is busy)
 ```
 
-### Test Workflow
-1. Go to "Order Processing" tab
-2. Paste test email from sample_emails.txt
-3. Upload test documents from inventory/ folder
-4. Click "Process Order with Documents"
-5. Go to "Human Review" tab
-6. Select order from dropdown
-7. Verify:
-   - Inventory matches show with actual tag images
-   - Click on images to test zoom functionality
-   - Radio buttons are visible in Select column
-   - Process button shows count of selected items
-   - Font colors and table formatting are correct
+### 2. Test Human Review Dashboard:
+- Navigate to Human Review tab
+- Click on any queue item
+- Verify gradient cards are visible
+- Check inventory table shows Size and Quantity
 
-### Verify Pattern Learning
-```sql
--- Check stored patterns
-SELECT * FROM email_patterns ORDER BY last_seen DESC;
+### 3. Search for AS RELAXED CROP WB:
+- Go to Inventory Search tab
+- Search for "AS RELAXED CROP WB"
+- Should return 10 results with different sizes
 
--- Check pattern confidence
-SELECT sender_email, intent_type, confidence, count 
-FROM email_patterns 
-WHERE confidence > 0.8;
+### 4. Verify Data Completeness:
+```python
+from factory_automation.factory_database.vector_db import ChromaDBClient
+client = ChromaDBClient()
+results = client.collection.get(where={'sheet': 'Sheet2'}, limit=300)
+print(f"Sheet2 items: {len(results['ids'])}")  # Should be 295
 ```
 
 ## Important Files to Remember
 
-### Core Implementation
-- `/factory_automation/factory_ui/human_review_dashboard.py` - Main UI with image display
-- `/factory_automation/factory_agents/order_processor_agent.py` - Order processing with DB save fix
-- `/run_factory_automation.py` - Main entry point with corrected imports
-- `/config.yaml` - Business email configuration
+### Modified Today:
+1. `factory_automation/factory_ui/human_review_dashboard.py` - UI with gradient cards and new table structure
+2. `CLAUDE.md` - Updated project memory
+3. `docs/SESSION_16_UI_AND_DATA_FIXES.md` - Today's session documentation
 
-### Database
-- `/factory_automation/factory_database/models.py` - All database models
-- ChromaDB collection: `tag_images_full` - Contains base64 encoded images
+### Created for Debugging:
+1. `debug_inventory_match.py` - Debug script for inventory issues
+2. `check_merged_cells.py` - Analyze Excel merged cells
+3. `ingest_merged_cells_data.py` - Ingestion script with merged cell handling
 
-### Test Files
-- `/test_image_fix.py` - Image zoom functionality testing
-- `/factory_automation/factory_agents/generate_clip_embeddings.py` - CLIP embedding generation
+### Critical Configuration Files:
+1. `config.yaml` - Application settings
+2. `.env` - API keys and secrets
+3. `inventory/*.xlsx` - Excel files with Sheet1 and Sheet2 data
 
 ## Next Priorities
 
-### 1. Document Generation (HIGH)
-- Implement proforma invoice generation
-- Create quotation templates
-- PDF export functionality
-- Email sending capability
+### Immediate Tasks:
+1. **Verify All Excel Files**: Check if other Excel files also have Sheet2 data that needs ingestion
+2. **Automate Merged Cell Ingestion**: Create a robust ingestion pipeline that handles merged cells automatically
+3. **Add Stock Status Indicators**: Visual indicators for in-stock/out-of-stock based on quantity
 
-### 2. Payment Tracking (HIGH)
-- OCR for UTR extraction
-- Cheque processing
-- Payment reconciliation dashboard
-- Integration with order status
+### Medium Priority:
+1. **Browser Compatibility**: Test gradient cards in Safari, Firefox, Edge
+2. **Loading States**: Add spinners/skeletons while data loads
+3. **Mobile Responsiveness**: Ensure UI works on tablets/phones
 
-### 3. Performance Optimization (MEDIUM)
-- Implement caching for patterns
-- Optimize database queries
-- Add connection pooling
-- Reduce embedding computation time
-
-### 4. Testing & Validation (MEDIUM)
-- Create comprehensive test suite for classification
-- Validate pattern learning accuracy
-- Load testing for concurrent requests
-- Edge case handling
-
-### 5. Production Deployment (LOW - waiting on IT)
-- Docker containerization
-- Environment-specific configs
-- Monitoring and logging setup
-- Gmail API integration
+### Long Term:
+1. **Complete Human Review System**: Implement batch processing as per plan
+2. **Payment Tracking**: OCR for UTR/cheque processing
+3. **Production Deployment**: Docker containerization and monitoring
 
 ## Critical Code Patterns
 
-### Image Retrieval from ChromaDB
+### Handling Merged Cells in Excel:
 ```python
-# Always check for image_id in metadata
-if 'metadata' in match and 'image_id' in match['metadata']:
-    collection = self.chromadb_client.client.get_collection('tag_images_full')
-    results = collection.get(ids=[image_id], include=['metadatas'])
-    if results['metadatas'] and results['metadatas'][0]:
-        image_url = f"data:image/png;base64,{results['metadatas'][0]['image_base64']}"
+# Always use forward-fill for merged cells
+df = pd.read_excel(file_path, sheet_name='Sheet2', header=0)
+df['TRIM NAME'] = df['TRIM NAME'].fillna(method='ffill')
 ```
 
-### JavaScript Global Functions in Gradio
-```javascript
-// Must make functions global for Gradio HTML components
-window.showImageModal = function(imgUrl, tagCode) {
-    // Implementation
-}
-```
-
-### Database Save Order
+### Inline Styles for Gradio (CSS limitations workaround):
 ```python
-# Always save order before creating related records
-db_session.add(new_order)
-db_session.commit()
-# Now safe to create recommendation_queue entries
+style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;"
 ```
 
-### CSS for Radio Button Visibility
-```css
-input[type='radio'] {
-    width: 18px !important;
-    height: 18px !important;
-    accent-color: #2563eb !important;
-    opacity: 1 !important;
-}
+### Accessing Metadata from ChromaDB:
+```python
+match.get("size", match.get('metadata', {}).get('size', "N/A"))
+match.get("quantity", match.get('metadata', {}).get('QTY', "N/A"))
 ```
 
 ## Environment Variables Needed
 
 ```bash
 # Required
-OPENAI_API_KEY=sk-...
+OPENAI_API_KEY=your_key_here
+DATABASE_URL=postgresql://postgres:postgres@localhost/factory_automation
 
 # Optional but recommended
-TOGETHER_API_KEY=...
-GMAIL_DELEGATED_EMAIL=trimsblr@yahoo.co.in
-
-# Database (defaults provided)
-DATABASE_PASSWORD=password
-DATABASE_URL=postgresql://user@localhost:5432/factory_automation
+TOGETHER_API_KEY=your_key_here
+PYTHONPATH=/Users/samarsingh/Factory_flow_Automation
 ```
 
-## Testing Checklist
+## Common Issues and Solutions
 
-- [ ] Email classification working
-- [ ] Pattern storage in PostgreSQL
-- [ ] Human review creation
-- [ ] Attachment processing
-- [ ] Image extraction from Excel
-- [ ] Visual similarity search
-- [ ] Confidence calculation
-- [ ] Review interface loading
-- [ ] Pattern learning updates
+### Issue: Gradient cards not showing
+**Solution**: Use inline styles instead of CSS classes
+
+### Issue: Missing inventory data
+**Solution**: Check if Sheet2 exists and use merged cell handling
+
+### Issue: Port already in use
+**Solution**: Kill existing process or use different port
+```bash
+lsof -i :7860 | grep LISTEN | awk '{print $2}' | xargs kill -9
+```
+
+## Testing Checklist for Next Session
+
+- [ ] All Excel files have Sheet2 ingested
+- [ ] Gradient cards visible in all browsers
+- [ ] Size/Quantity data accurate for all items
+- [ ] Search returns complete results
+- [ ] Human Review queue processes correctly
+- [ ] Images load and zoom properly
+- [ ] No console errors in browser
 
 ## Notes for Next Developer
 
-1. **Pattern Learning**: The system gets smarter with each email. Monitor the email_patterns table to see improvement.
+1. **Merged Cells Are Common**: Many Excel files use merged cells for grouping items
+2. **Gradio CSS Limitations**: Use inline styles for critical styling
+3. **ChromaDB Collections**: Different embedding dimensions (1024 for Stella, 384 for MiniLM)
+4. **Database Schema**: recommendation_queue uses queue_id not id
+5. **Image Storage**: Base64 encoded in ChromaDB metadata
 
-2. **Review Creation**: The orchestrator decides, not the order processor. This is intentional for better control.
+## Session End Status
 
-3. **Confidence Scores**: Can be dict, list, or int. Always validate type before processing.
-
-4. **Attachments**: Passed as file paths, not base64. This saves memory and improves performance.
-
-5. **Port Issues**: If 7860 is busy, the app automatically tries 7861, 7862, etc.
-
-6. **Debug Mode**: Set `enable_comparison_logging: true` in config.yaml for detailed orchestrator decisions.
-
-## Commands Reference
-
-```bash
-# Format code
-make format
-
-# Run tests
-make test
-
-# Check lint
-make check
-
-# Clean cache
-find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
-
-# Database migration
-psql -U user -d factory_automation -f migrations/add_email_patterns_table.sql
-
-# View logs
-tail -f orchestrator_comparison_logs/$(ls -t orchestrator_comparison_logs | head -1)
-```
-
-## Success Metrics
-
-- Pattern confidence improving over time: ✅
-- Human reviews created automatically: ✅
-- No duplicate reviews: ✅
-- Classification accuracy > 80%: ✅
-- Processing time < 2 minutes: ✅
+- Application running and stable
+- All changes committed to git
+- Documentation updated
+- No critical errors pending
+- Ready for next session

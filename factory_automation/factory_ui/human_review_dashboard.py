@@ -92,6 +92,10 @@ class HumanReviewDashboard:
             --border-color: #e5e7eb;
             --card-bg: white;
             --hover-bg: #f3f4f6;
+            --customer-card-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --ai-card-bg: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --customer-card-border: #667eea;
+            --ai-card-border: #f093fb;
         }
         
         @media (prefers-color-scheme: dark) {
@@ -103,6 +107,10 @@ class HumanReviewDashboard:
                 --border-color: #4b5563;
                 --card-bg: #1f2937;
                 --hover-bg: #374151;
+                --customer-card-bg: linear-gradient(135deg, #4c51bf 0%, #553c9a 100%);
+                --ai-card-bg: linear-gradient(135deg, #ec4899 0%, #ef4444 100%);
+                --customer-card-border: #4c51bf;
+                --ai-card-border: #ec4899;
             }
         }
         
@@ -135,6 +143,64 @@ class HumanReviewDashboard:
         
         .card * {
             color: var(--text-primary);
+        }
+        
+        /* Special styling for Customer Information card */
+        .customer-info-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+            border: 2px solid #667eea !important;
+            box-shadow: 0 4px 6px rgba(102, 126, 234, 0.25) !important;
+            color: white !important;
+        }
+        
+        @media (prefers-color-scheme: dark) {
+            .customer-info-card {
+                background: linear-gradient(135deg, #4c51bf 0%, #553c9a 100%) !important;
+                border: 2px solid #4c51bf !important;
+            }
+        }
+        
+        .customer-info-card h4,
+        .customer-info-card .label,
+        .customer-info-card .value,
+        .customer-info-card * {
+            color: white !important;
+        }
+        
+        .customer-info-card .info-row {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important;
+        }
+        
+        .customer-info-card .badge {
+            background: rgba(255, 255, 255, 0.2) !important;
+            color: white !important;
+            border: 1px solid rgba(255, 255, 255, 0.3) !important;
+        }
+        
+        /* Special styling for AI Recommendation card */
+        .ai-recommendation-card {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%) !important;
+            border: 2px solid #f093fb !important;
+            box-shadow: 0 4px 6px rgba(240, 147, 251, 0.25) !important;
+            color: white !important;
+        }
+        
+        @media (prefers-color-scheme: dark) {
+            .ai-recommendation-card {
+                background: linear-gradient(135deg, #ec4899 0%, #ef4444 100%) !important;
+                border: 2px solid #ec4899 !important;
+            }
+        }
+        
+        .ai-recommendation-card h4,
+        .ai-recommendation-card .label,
+        .ai-recommendation-card .value,
+        .ai-recommendation-card * {
+            color: white !important;
+        }
+        
+        .ai-recommendation-card .info-row {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important;
         }
         
         .info-row {
@@ -554,12 +620,12 @@ class HumanReviewDashboard:
 
                     # Customer information card
                     customer_card = gr.HTML(
-                        value='<div class="card"><p style="color:#9ca3af;">No item selected</p></div>'
+                        value='<div class="card customer-info-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; border: 2px solid #667eea !important; box-shadow: 0 4px 6px rgba(102, 126, 234, 0.25) !important; color: white !important; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem;"><h4 style="color: white !important;">👤 Customer Information</h4><p style="color:rgba(255,255,255,0.8);">No item selected</p></div>'
                     )
 
                     # AI Recommendation card
                     recommendation_card = gr.HTML(
-                        value='<div class="card"><h4>AI Recommendation</h4><p style="color:#9ca3af;">Select an item to view recommendation</p></div>'
+                        value='<div class="card ai-recommendation-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%) !important; border: 2px solid #f093fb !important; box-shadow: 0 4px 6px rgba(240, 147, 251, 0.25) !important; color: white !important; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem;"><h4 style="color: white !important;">🤖 AI Recommendation</h4><p style="color:rgba(255,255,255,0.8);">Select an item to view recommendation</p></div>'
                     )
 
                     # Inventory matches section with integrated images
@@ -734,23 +800,23 @@ class HumanReviewDashboard:
 
                     # Format customer card
                     customer_html = f"""
-                    <div class="card">
-                        <h4>👤 Customer Information</h4>
-                        <div class="info-row">
-                            <span class="label">Email:</span>
-                            <span class="value">{rec["customer_email"]}</span>
+                    <div class="card customer-info-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; border: 2px solid #667eea !important; box-shadow: 0 4px 6px rgba(102, 126, 234, 0.25) !important; color: white !important; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem;">
+                        <h4 style="color: white !important; margin-top: 0;">👤 Customer Information</h4>
+                        <div class="info-row" style="border-bottom: 1px solid rgba(255, 255, 255, 0.2); padding: 0.75rem 0;">
+                            <span class="label" style="color: rgba(255, 255, 255, 0.9) !important;">Email:</span>
+                            <span class="value" style="color: white !important; font-weight: 600;">{rec["customer_email"]}</span>
                         </div>
-                        <div class="info-row">
-                            <span class="label">Queue ID:</span>
-                            <span class="value" style="font-family:monospace; word-break: break-all;">{rec["queue_id"]}</span>
+                        <div class="info-row" style="border-bottom: 1px solid rgba(255, 255, 255, 0.2); padding: 0.75rem 0;">
+                            <span class="label" style="color: rgba(255, 255, 255, 0.9) !important;">Queue ID:</span>
+                            <span class="value" style="font-family:monospace; word-break: break-all; color: white !important; font-weight: 600;">{rec["queue_id"]}</span>
                         </div>
-                        <div class="info-row">
-                            <span class="label">Priority:</span>
-                            <span class="badge priority-{rec["priority"]}">{rec["priority"].upper()}</span>
+                        <div class="info-row" style="border-bottom: 1px solid rgba(255, 255, 255, 0.2); padding: 0.75rem 0;">
+                            <span class="label" style="color: rgba(255, 255, 255, 0.9) !important;">Priority:</span>
+                            <span class="badge" style="background: rgba(255, 255, 255, 0.2); color: white !important; padding: 0.25rem 0.75rem; border-radius: 12px;">{rec["priority"].upper()}</span>
                         </div>
-                        <div class="info-row">
-                            <span class="label">Created:</span>
-                            <span class="value">{rec["created_at"][:19] if rec["created_at"] else "N/A"}</span>
+                        <div class="info-row" style="padding: 0.75rem 0;">
+                            <span class="label" style="color: rgba(255, 255, 255, 0.9) !important;">Created:</span>
+                            <span class="value" style="color: white !important; font-weight: 600;">{rec["created_at"][:19] if rec["created_at"] else "N/A"}</span>
                         </div>
                     </div>
                     """
@@ -863,22 +929,22 @@ class HumanReviewDashboard:
 
                     # Build complete recommendation card
                     recommendation_html = f"""
-                    <div class="card">
-                        <h4>🤖 AI Recommendation</h4>
-                        <div class="info-row">
-                            <span class="label">Action:</span>
-                            <span class="value">{action}</span>
+                    <div class="card ai-recommendation-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%) !important; border: 2px solid #f093fb !important; box-shadow: 0 4px 6px rgba(240, 147, 251, 0.25) !important; color: white !important; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem;">
+                        <h4 style="color: white !important; margin-top: 0;">🤖 AI Recommendation</h4>
+                        <div class="info-row" style="border-bottom: 1px solid rgba(255, 255, 255, 0.2); padding: 0.75rem 0;">
+                            <span class="label" style="color: rgba(255, 255, 255, 0.9) !important;">Action:</span>
+                            <span class="value" style="color: white !important; font-weight: 600;">{action}</span>
                         </div>
-                        <div class="info-row">
-                            <span class="label">Confidence:</span>
-                            <span class="value">{confidence:.1%}</span>
+                        <div class="info-row" style="border-bottom: 1px solid rgba(255, 255, 255, 0.2); padding: 0.75rem 0;">
+                            <span class="label" style="color: rgba(255, 255, 255, 0.9) !important;">Confidence:</span>
+                            <span class="value" style="color: white !important; font-weight: 600;">{confidence:.1%}</span>
                         </div>
-                        <div class="confidence-bar">
-                            <div class="confidence-fill confidence-{conf_class}" style="width:{confidence*100}%"></div>
+                        <div class="confidence-bar" style="height: 8px; border-radius: 4px; margin-top: 0.5rem; background: rgba(255, 255, 255, 0.2); overflow: hidden;">
+                            <div class="confidence-fill" style="width:{confidence*100}%; height: 100%; background: rgba(255, 255, 255, 0.8);"></div>
                         </div>
-                        <div class="info-row" style="margin-top:1rem;">
-                            <span class="label">Type:</span>
-                            <span class="value">{rec["recommendation_type"]}</span>
+                        <div class="info-row" style="margin-top:1rem; padding: 0.75rem 0;">
+                            <span class="label" style="color: rgba(255, 255, 255, 0.9) !important;">Type:</span>
+                            <span class="value" style="color: white !important; font-weight: 600;">{rec["recommendation_type"]}</span>
                         </div>
                         {email_body and f'<div class="info-row"><span class="label">Email Preview:</span><span class="value" style="font-style:italic; white-space: pre-wrap;">{email_body}</span></div>' or ''}
                     </div>
@@ -1117,7 +1183,8 @@ class HumanReviewDashboard:
                                     <th>Tag Code</th>
                                     <th>Name</th>
                                     <th>Brand</th>
-                                    <th>Type</th>
+                                    <th>Size</th>
+                                    <th>Quantity</th>
                                     <th>Confidence</th>
                                     <th>Status</th>
                                     <th>Source</th>
@@ -1294,7 +1361,8 @@ class HumanReviewDashboard:
                                 <td><strong style="font-family: monospace; font-size: 0.9em;">{tag_code or "N/A"}</strong></td>
                                 <td style="word-wrap: break-word; max-width: 200px;">{match.get("name", "N/A")}</td>
                                 <td>{match.get("brand", match.get('metadata', {}).get('brand', "N/A"))}</td>
-                                <td>{match.get("tag_type", match.get('metadata', {}).get('tag_type', "N/A"))}</td>
+                                <td>{match.get("size", match.get('metadata', {}).get('size', "N/A"))}</td>
+                                <td>{match.get("quantity", match.get('metadata', {}).get('quantity', match.get('metadata', {}).get('QTY', "N/A")))}</td>
                                 <td>
                                     <div style="display: flex; align-items: center; gap: 4px;">
                                         <div style="width: 40px; background: #e5e7eb; border-radius: 8px; height: 16px;">
