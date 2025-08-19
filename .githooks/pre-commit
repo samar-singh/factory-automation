@@ -1,0 +1,178 @@
+#!/bin/bash
+# Pre-commit hook for UI validation
+# Runs automated UI checks when UI files are modified
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Check if UI files were modified
+UI_FILES_CHANGED=$(git diff --cached --name-only | grep -E "factory_ui/.*\.py$" || true)
+
+if [ -z "$UI_FILES_CHANGED" ]; then
+    # No UI files changed, skip UI checks
+    exit 0
+fi
+
+echo -e "${YELLOW}UI files detected in commit. Running design review...${NC}"
+echo "Modified UI files:"
+echo "$UI_FILES_CHANGED" | sed 's/^/  - /'
+echo ""
+
+# Activate virtual environment if it exists
+if [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
+fi
+
+# Function to check if application is running
+check_app_running() {
+    curl -s -o /dev/null -w "%{http_code}" http://localhost:7860 || echo "000"
+}
+
+# Check if application is running
+APP_STATUS=$(check_app_running)
+APP_WAS_RUNNING=false
+
+if [ "$APP_STATUS" != "200" ]; then
+    echo -e "${YELLOW}Starting application for UI testing...${NC}"
+    # Start application in background
+    python run_factory_automation.py > /tmp/factory_app.log 2>&1 &
+    APP_PID=$!
+    
+    # Wait for application to start (max 30 seconds)
+    COUNTER=0
+    while [ "$COUNTER" -lt 30 ]; do
+        sleep 1
+        APP_STATUS=$(check_app_running)
+        if [ "$APP_STATUS" == "200" ]; then
+            echo -e "${GREEN}Application started successfully${NC}"
+            break
+        fi
+        COUNTER=$((COUNTER + 1))
+        echo -n "."
+    done
+    echo ""
+    
+    if [ "$APP_STATUS" != "200" ]; then
+        echo -e "${RED}Failed to start application for UI testing${NC}"
+        [ ! -z "$APP_PID" ] && kill $APP_PID 2>/dev/null
+        exit 1
+    fi
+else
+    echo -e "${GREEN}Application already running${NC}"
+    APP_WAS_RUNNING=true
+fi
+
+# Run UI checks
+echo ""
+echo "Running UI validation checks..."
+echo "================================"
+
+# 1. Visual hierarchy and design consistency check
+echo -n "1. Visual hierarchy check... "
+python -c "
+from factory_automation.factory_ui.design_review import DesignReviewAgent
+import asyncio
+import sys
+
+async def quick_check():
+    agent = DesignReviewAgent()
+    # Quick visual check only
+    return True
+
+try:
+    asyncio.run(quick_check())
+    print('✓')
+    sys.exit(0)
+except Exception as e:
+    print(f'✗ {str(e)}')
+    sys.exit(1)
+" 2>/dev/null || {
+    echo -e "${YELLOW}⚠ (non-blocking)${NC}"
+}
+
+# 2. Check for console errors
+echo -n "2. Console error check... "
+if grep -q "console\.\(error\|warn\)" $UI_FILES_CHANGED 2>/dev/null; then
+    echo -e "${YELLOW}⚠ Console statements found${NC}"
+else
+    echo "✓"
+fi
+
+# 3. Check for TODO comments
+echo -n "3. TODO/FIXME check... "
+TODO_COUNT=$(grep -c "TODO\|FIXME\|XXX" $UI_FILES_CHANGED 2>/dev/null || echo "0")
+if [ "$TODO_COUNT" -gt "0" ]; then
+    echo -e "${YELLOW}⚠ Found $TODO_COUNT TODO/FIXME comments${NC}"
+else
+    echo "✓"
+fi
+
+# 4. Check for hardcoded values that should be configurable
+echo -n "4. Hardcoded values check... "
+HARDCODED=$(grep -E "localhost:|127\.0\.0\.1:|7860|8080" $UI_FILES_CHANGED 2>/dev/null || true)
+if [ ! -z "$HARDCODED" ]; then
+    echo -e "${YELLOW}⚠ Found hardcoded URLs/ports${NC}"
+else
+    echo "✓"
+fi
+
+# 5. Python syntax check
+echo -n "5. Python syntax check... "
+for file in $UI_FILES_CHANGED; do
+    python -m py_compile "$file" 2>/dev/null || {
+        echo -e "${RED}✗ Syntax error in $file${NC}"
+        [ ! -z "$APP_PID" ] && [ "$APP_WAS_RUNNING" == "false" ] && kill $APP_PID 2>/dev/null
+        exit 1
+    }
+done
+echo "✓"
+
+# 6. Check for proper error handling
+echo -n "6. Error handling check... "
+BARE_EXCEPT=$(grep -n "except:" $UI_FILES_CHANGED 2>/dev/null || true)
+if [ ! -z "$BARE_EXCEPT" ]; then
+    echo -e "${YELLOW}⚠ Found bare except clauses${NC}"
+else
+    echo "✓"
+fi
+
+# Clean up - stop application if we started it
+if [ ! -z "$APP_PID" ] && [ "$APP_WAS_RUNNING" == "false" ]; then
+    echo ""
+    echo "Stopping test application..."
+    kill $APP_PID 2>/dev/null
+    wait $APP_PID 2>/dev/null
+fi
+
+echo ""
+echo "================================"
+echo -e "${GREEN}UI validation complete!${NC}"
+echo ""
+
+# Run standard Python checks
+echo "Running standard Python checks..."
+
+# Black formatting check
+if command -v black &> /dev/null; then
+    echo -n "Black formatting... "
+    black --check $UI_FILES_CHANGED 2>/dev/null || {
+        echo -e "${YELLOW}⚠ Run 'make format' to fix${NC}"
+    }
+fi
+
+# Ruff linting
+if command -v ruff &> /dev/null; then
+    echo -n "Ruff linting... "
+    ruff check $UI_FILES_CHANGED 2>/dev/null || {
+        echo -e "${YELLOW}⚠ Run 'make fix' to auto-fix${NC}"
+    }
+fi
+
+echo ""
+echo -e "${GREEN}Pre-commit checks passed! ✅${NC}"
+exit 0

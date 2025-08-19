@@ -2,7 +2,6 @@
 """Check all Excel files for Sheet2 data"""
 
 import pandas as pd
-import os
 from pathlib import Path
 
 def check_all_excel_files():
@@ -43,7 +42,7 @@ def check_all_excel_files():
                     if non_null:
                         print(f"  📝 Sample items: {', '.join(str(x) for x in non_null[:3])}")
                 else:
-                    print(f"  ✅ Has Sheet2 but no TRIM NAME column")
+                    print("  ✅ Has Sheet2 but no TRIM NAME column")
                     print(f"  📊 Columns: {list(df.columns)[:5]}...")
             else:
                 print("  ❌ No Sheet2 found")
@@ -52,12 +51,12 @@ def check_all_excel_files():
             print(f"  ⚠️ Error reading file: {e}")
     
     print("\n" + "="*70)
-    print(f"\n📊 Summary:")
+    print("\n📊 Summary:")
     print(f"Total Excel files: {len(excel_files)}")
     print(f"Files with Sheet2: {len(files_with_sheet2)}")
     
     if files_with_sheet2:
-        print(f"\n📋 Files that need Sheet2 ingestion:")
+        print("\n📋 Files that need Sheet2 ingestion:")
         for idx, file_name in enumerate(files_with_sheet2, 1):
             print(f"  {idx}. {file_name}")
     

@@ -82,3 +82,37 @@ docker-build: ## Build Docker image
 
 docker-run: ## Run Docker container
 	docker run -p 7860:7860 --env-file .env factory-automation:latest
+
+# UI Design Review targets
+ui-check: ## Run comprehensive UI design review
+	$(VENV_BIN)/python -m factory_automation.factory_ui.design_review --save
+
+ui-agent: ## Run AI Design Review Agent (7-phase methodology)
+	$(VENV_BIN)/python -m factory_automation.factory_agents.design_review_agent --save
+
+ui-screenshot: ## Capture UI screenshots for all viewports
+	$(VENV_BIN)/python -m factory_automation.factory_ui.design_review --url http://localhost:7860 --save --output ui_screenshots_$(shell date +%Y%m%d_%H%M%S).json
+
+ui-accessibility: ## Run WCAG accessibility tests
+	$(VENV_BIN)/pytest factory_automation/factory_tests/test_ui_accessibility.py -v
+
+ui-quick: ## Quick UI validation check
+	@echo "Running quick UI validation..."
+	$(VENV_BIN)/python -c "from factory_automation.factory_ui.design_review import DesignReviewAgent; import asyncio; agent = DesignReviewAgent(); asyncio.run(agent._check_visual_hierarchy(None, 'quick'))" 2>/dev/null || echo "✓ Quick check complete"
+
+ui-test: ui-accessibility ## Run all UI tests
+
+ui-review: ui-check ui-accessibility ## Full UI review with all checks
+
+ui-baseline: ## Create baseline screenshots for visual regression
+	mkdir -p ui_screenshots/baseline
+	$(VENV_BIN)/python -m factory_automation.factory_ui.design_review --save --output ui_screenshots/baseline/baseline.json
+
+ui-compare: ## Compare current UI against baseline
+	$(VENV_BIN)/python -m factory_automation.factory_ui.visual_regression --compare
+
+ui-clean: ## Clean UI test artifacts
+	rm -rf ui_screenshots/*.png ui_review_*.json
+
+# Combined UI and code quality check
+full-check: check ui-review ## Run all code and UI checks

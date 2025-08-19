@@ -32,6 +32,81 @@ class HumanReviewDashboard:
         self.chromadb_client = chromadb_client or ChromaDBClient()
         self.recommendation_cache = {}  # Cache for quick detail access
 
+    def generate_contextual_email_response(self, rec_data, confidence_score):
+        """Generate a contextual email response based on the recommendation data"""
+        customer_email = rec_data.get("customer_email", "Customer")
+        customer_name = rec_data.get("customer_name", customer_email.split("@")[0])
+        action = rec_data.get("action", "review")
+        
+        # Get inventory matches to understand what was found
+        matches = rec_data.get("inventory_matches", [])
+        has_matches = len(matches) > 0
+        
+        # Generate response based on confidence and matches
+        if confidence_score >= 0.8 and has_matches:
+            # High confidence with matches - order can be processed
+            email_body = f"""Dear {customer_name},
+
+Thank you for your order. We are pleased to confirm that we have received your request and have identified the following matching items from our inventory:
+
+"""
+            for match in matches[:5]:  # Show top 5 matches
+                tag_code = match.get("tag_code", "N/A")
+                name = match.get("name", "Item")
+                email_body += f"• {name} (Code: {tag_code})\n"
+            
+            email_body += """
+We will process your order shortly and send you a proforma invoice with the complete details including pricing and delivery timeline.
+
+If you have any questions or need to make changes to your order, please don't hesitate to contact us.
+
+Best regards,
+Factory Automation Team"""
+            
+        elif 0.6 <= confidence_score < 0.8 and has_matches:
+            # Medium confidence - need clarification
+            email_body = f"""Dear {customer_name},
+
+Thank you for your order. We have identified some potential matches for your request, but we need to confirm a few details to ensure accuracy:
+
+"""
+            for match in matches[:3]:  # Show top 3 matches
+                tag_code = match.get("tag_code", "N/A")
+                name = match.get("name", "Item")
+                email_body += f"• {name} (Code: {tag_code})\n"
+            
+            email_body += """
+Could you please confirm if these are the correct items you're looking for? If not, please provide additional details such as:
+- Specific tag codes or product names
+- Quantities required for each item
+- Any special specifications or requirements
+
+Once we have this information, we'll process your order immediately.
+
+Best regards,
+Factory Automation Team"""
+            
+        else:
+            # Low confidence or no matches - need more information
+            email_body = f"""Dear {customer_name},
+
+Thank you for your inquiry. We've reviewed your request but need additional information to identify the exact items you need from our inventory.
+
+Could you please provide:
+1. Specific tag codes or product references
+2. Brand names (Allen Solly, Van Heusen, Peter England, etc.)
+3. Quantities required for each item
+4. Any specific size or color requirements
+
+You can also share any product images or specification sheets that would help us identify the correct items.
+
+We're here to help and will process your order as soon as we have the necessary details.
+
+Best regards,
+Factory Automation Team"""
+        
+        return email_body
+
     def format_additional_context(self, rec_data):
         """Format any additional context from the recommendation data"""
         context_html = ""
@@ -81,7 +156,7 @@ class HumanReviewDashboard:
     def create_interface(self) -> gr.Blocks:
         """Create the main dashboard interface with modern design"""
 
-        # Custom CSS for modern, clean styling with dark mode support
+        # Custom CSS for modern, clean styling with dark mode support and accessibility
         custom_css = """
         /* CSS Variables for automatic light/dark mode */
         :root {
@@ -96,6 +171,93 @@ class HumanReviewDashboard:
             --ai-card-bg: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
             --customer-card-border: #667eea;
             --ai-card-border: #f093fb;
+            --focus-color: #2563eb;
+            --focus-outline: 2px solid #2563eb;
+            --focus-outline-offset: 2px;
+        }
+        
+        /* Accessibility: Focus indicators for all interactive elements */
+        button:focus,
+        input:focus,
+        textarea:focus,
+        select:focus,
+        a:focus,
+        [tabindex]:focus,
+        .gr-button:focus,
+        .gr-input:focus,
+        .gr-dropdown:focus,
+        .gr-checkbox:focus,
+        .gr-radio:focus,
+        .gr-textbox:focus,
+        .gr-number:focus {
+            outline: var(--focus-outline) !important;
+            outline-offset: var(--focus-outline-offset) !important;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
+        }
+        
+        /* High contrast focus for better visibility */
+        @media (prefers-contrast: high) {
+            button:focus,
+            input:focus,
+            textarea:focus,
+            select:focus,
+            a:focus,
+            [tabindex]:focus {
+                outline: 3px solid black !important;
+                outline-offset: 3px !important;
+            }
+        }
+        
+        /* Skip to content link for screen readers */
+        .skip-to-content {
+            position: absolute;
+            top: -40px;
+            left: 0;
+            background: var(--focus-color);
+            color: white;
+            padding: 8px;
+            text-decoration: none;
+            z-index: 100000;
+        }
+        
+        .skip-to-content:focus {
+            top: 0;
+        }
+        
+        /* Ensure minimum touch target size for mobile */
+        button,
+        .gr-button,
+        input[type="checkbox"],
+        input[type="radio"],
+        .clickable {
+            min-width: 44px;
+            min-height: 44px;
+            position: relative;
+        }
+        
+        /* For smaller buttons, add invisible touch area */
+        button.small-button::before,
+        .gr-button.small::before {
+            content: "";
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            bottom: -8px;
+            left: -8px;
+            z-index: 1;
+        }
+        
+        /* Screen reader only text */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
         }
         
         @media (prefers-color-scheme: dark) {
@@ -556,10 +718,283 @@ class HumanReviewDashboard:
             color: #6b7280;
             font-style: italic;
         }
+        
+        /* Enhanced Mobile Responsiveness */
+        @media (max-width: 768px) {
+            /* Fix navigation tabs getting cut off */
+            .gr-tabs-parent, .tabs {
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch;
+                scroll-behavior: smooth;
+            }
+            
+            .gr-tab-nav, .tab-nav {
+                display: flex !important;
+                flex-wrap: nowrap !important;
+                overflow-x: auto !important;
+                gap: 0.5rem;
+                padding: 0.5rem;
+                min-width: max-content;
+            }
+            
+            .gr-tab-nav button, .tab-nav button {
+                flex-shrink: 0 !important;
+                white-space: nowrap !important;
+                padding: 0.5rem 1rem !important;
+            }
+            
+            /* Optimize tables for mobile */
+            table {
+                display: block;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            
+            /* Stack layout vertically on mobile */
+            .gr-row {
+                flex-direction: column !important;
+            }
+            
+            .gr-column {
+                width: 100% !important;
+                max-width: 100% !important;
+            }
+            
+            /* Make buttons full width on mobile */
+            button, .gr-button {
+                width: 100% !important;
+                margin: 0.25rem 0 !important;
+            }
+            
+            /* Compact cards on mobile */
+            .card {
+                padding: 0.75rem !important;
+                margin: 0.5rem 0 !important;
+            }
+            
+            /* Hide less important table columns */
+            .dataframe th:nth-child(n+4),
+            .dataframe td:nth-child(n+4) {
+                display: none;
+            }
+            
+            /* Responsive font sizes */
+            h1 { font-size: 1.5rem !important; }
+            h2 { font-size: 1.25rem !important; }
+            h3 { font-size: 1.125rem !important; }
+            h4 { font-size: 1rem !important; }
+        }
+        
+        /* Extra small devices */
+        @media (max-width: 480px) {
+            /* Even more compact for very small screens */
+            .gr-tab-nav button, .tab-nav button {
+                padding: 0.25rem 0.5rem !important;
+                font-size: 0.875rem !important;
+            }
+            
+            .dataframe {
+                font-size: 0.7rem !important;
+            }
+            
+            /* Show only essential columns in tables */
+            .dataframe th:nth-child(n+3),
+            .dataframe td:nth-child(n+3) {
+                display: none;
+            }
+        }
         """
 
-        with gr.Blocks(css=custom_css, theme=gr.themes.Base()) as interface:
-            gr.Markdown("# 🎯 Human Review Dashboard")
+        # JavaScript for enhanced accessibility
+        accessibility_js = """
+        function enhanceAccessibility() {
+            // Add ARIA labels to buttons
+            document.querySelectorAll('button').forEach(btn => {
+                if (btn.textContent.includes('Refresh')) {
+                    btn.setAttribute('aria-label', 'Refresh queue list');
+                } else if (btn.textContent.includes('Approve')) {
+                    btn.setAttribute('aria-label', 'Approve selected recommendation');
+                } else if (btn.textContent.includes('Defer')) {
+                    btn.setAttribute('aria-label', 'Defer recommendation for later review');
+                } else if (btn.textContent.includes('Reject')) {
+                    btn.setAttribute('aria-label', 'Reject recommendation');
+                } else if (btn.textContent.includes('Delete')) {
+                    btn.setAttribute('aria-label', 'Delete recommendation from queue');
+                } else if (btn.textContent.includes('Send Email')) {
+                    btn.setAttribute('aria-label', 'Send email response to customer');
+                } else if (btn.textContent.includes('Process Selected')) {
+                    btn.setAttribute('aria-label', 'Process all selected items');
+                }
+            });
+            
+            // Add ARIA labels to form fields
+            document.querySelectorAll('input, textarea, select').forEach(input => {
+                const label = input.closest('.gr-form')?.querySelector('label');
+                if (label && !input.getAttribute('aria-label')) {
+                    input.setAttribute('aria-label', label.textContent);
+                }
+            });
+            
+            // Add role and aria-live to status messages
+            document.querySelectorAll('.markdown-text').forEach(elem => {
+                if (elem.textContent.includes('✅') || elem.textContent.includes('❌')) {
+                    elem.setAttribute('role', 'status');
+                    elem.setAttribute('aria-live', 'polite');
+                }
+            });
+            
+            // Ensure tables are keyboard navigable
+            document.querySelectorAll('table').forEach(table => {
+                table.setAttribute('role', 'table');
+                table.querySelectorAll('tr').forEach(row => {
+                    row.setAttribute('tabindex', '0');
+                    row.setAttribute('role', 'row');
+                });
+            });
+            
+            // Add skip to content link
+            if (!document.querySelector('.skip-to-content')) {
+                const skipLink = document.createElement('a');
+                skipLink.href = '#main-content';
+                skipLink.className = 'skip-to-content';
+                skipLink.textContent = 'Skip to main content';
+                document.body.insertBefore(skipLink, document.body.firstChild);
+            }
+        }
+        
+        // Run on load and after DOM changes
+        document.addEventListener('DOMContentLoaded', enhanceAccessibility);
+        const observer = new MutationObserver(enhanceAccessibility);
+        observer.observe(document.body, { childList: true, subtree: true });
+        
+        // Add sorting functionality to tables
+        function makeTablesSortable() {
+            document.querySelectorAll('.match-table').forEach(table => {
+                const headers = table.querySelectorAll('th');
+                headers.forEach((header, index) => {
+                    if (!header.querySelector('.sort-indicator')) {
+                        // Add sort indicator
+                        const sortIndicator = document.createElement('span');
+                        sortIndicator.className = 'sort-indicator';
+                        sortIndicator.innerHTML = ' ↕';
+                        sortIndicator.style.cursor = 'pointer';
+                        sortIndicator.style.opacity = '0.5';
+                        header.appendChild(sortIndicator);
+                        header.style.cursor = 'pointer';
+                        
+                        // Add click handler for sorting
+                        header.addEventListener('click', () => {
+                            sortTable(table, index);
+                            updateSortIndicator(header, table);
+                        });
+                    }
+                });
+            });
+        }
+        
+        function sortTable(table, columnIndex) {
+            const tbody = table.querySelector('tbody');
+            if (!tbody) return;
+            
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            const isAscending = table.dataset.sortOrder !== 'asc';
+            
+            rows.sort((a, b) => {
+                const aValue = a.cells[columnIndex]?.textContent || '';
+                const bValue = b.cells[columnIndex]?.textContent || '';
+                
+                // Try to parse as number first
+                const aNum = parseFloat(aValue.replace(/[^0-9.-]/g, ''));
+                const bNum = parseFloat(bValue.replace(/[^0-9.-]/g, ''));
+                
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                    return isAscending ? aNum - bNum : bNum - aNum;
+                }
+                
+                // Fall back to string comparison
+                return isAscending 
+                    ? aValue.localeCompare(bValue) 
+                    : bValue.localeCompare(aValue);
+            });
+            
+            // Re-append rows in sorted order
+            rows.forEach(row => tbody.appendChild(row));
+            table.dataset.sortOrder = isAscending ? 'asc' : 'desc';
+            table.dataset.sortColumn = columnIndex;
+        }
+        
+        function updateSortIndicator(clickedHeader, table) {
+            const headers = table.querySelectorAll('th');
+            headers.forEach(header => {
+                const indicator = header.querySelector('.sort-indicator');
+                if (indicator) {
+                    if (header === clickedHeader) {
+                        indicator.innerHTML = table.dataset.sortOrder === 'asc' ? ' ↑' : ' ↓';
+                        indicator.style.opacity = '1';
+                    } else {
+                        indicator.innerHTML = ' ↕';
+                        indicator.style.opacity = '0.5';
+                    }
+                }
+            });
+        }
+        
+        // Add filter functionality
+        function addTableFilters() {
+            document.querySelectorAll('.match-table').forEach(table => {
+                if (!table.previousElementSibling?.classList.contains('table-filter')) {
+                    const filterContainer = document.createElement('div');
+                    filterContainer.className = 'table-filter';
+                    filterContainer.innerHTML = `
+                        <input type="text" 
+                               placeholder="Filter table..." 
+                               class="table-filter-input"
+                               style="width: 100%; padding: 0.5rem; margin-bottom: 0.5rem; 
+                                      border: 1px solid var(--border-color); 
+                                      border-radius: 4px; font-size: 0.875rem;">
+                    `;
+                    
+                    table.parentNode.insertBefore(filterContainer, table);
+                    
+                    const filterInput = filterContainer.querySelector('.table-filter-input');
+                    filterInput.addEventListener('input', (e) => {
+                        filterTable(table, e.target.value);
+                    });
+                }
+            });
+        }
+        
+        function filterTable(table, filterText) {
+            const tbody = table.querySelector('tbody');
+            if (!tbody) return;
+            
+            const rows = tbody.querySelectorAll('tr');
+            const filter = filterText.toLowerCase();
+            
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(filter) ? '' : 'none';
+            });
+        }
+        
+        // Initialize sorting and filtering
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                makeTablesSortable();
+                addTableFilters();
+            }, 1000);
+        });
+        
+        // Re-initialize on DOM changes
+        const tableObserver = new MutationObserver(() => {
+            makeTablesSortable();
+            addTableFilters();
+        });
+        tableObserver.observe(document.body, { childList: true, subtree: true });
+        """
+        
+        with gr.Blocks(css=custom_css, theme=gr.themes.Base(), js=accessibility_js) as interface:
+            gr.Markdown("# 🎯 Human Review Dashboard", elem_id="main-content")
             gr.Markdown("Review and process pending recommendations with confidence")
 
             # State management
@@ -1440,7 +1875,12 @@ class HumanReviewDashboard:
                     email_response = ""
                     show_email_fields = False
                     if rec["recommendation_type"] == "email_response":
+                        # Try to get existing email draft, otherwise generate contextual response
                         email_response = rec_data.get("email_draft", {}).get("body", "")
+                        if not email_response or "placeholder" in email_response.lower():
+                            # Generate contextual email response based on confidence and matches
+                            confidence = rec.get("confidence_score", 0.5)
+                            email_response = self.generate_contextual_email_response(rec_data, confidence)
                         show_email_fields = True
 
                     return (
@@ -1502,7 +1942,7 @@ class HumanReviewDashboard:
                             
                             conn.commit()
                         
-                        return f"🗑️ Item and associated order deleted from database!"
+                        return "🗑️ Item and associated order deleted from database!"
                     else:
                         # Update database with status
                         with engine.connect() as conn:

@@ -642,7 +642,7 @@ Think step by step and ensure complete execution from email receipt to customer 
                 response = {
                     "order_id": result.order.order_id if result.order else "N/A",
                     "customer": (
-                        result.order.customer.company_name
+                        result.order.customer.email
                         if result.order
                         else "Unknown"
                     ),

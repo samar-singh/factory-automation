@@ -2,7 +2,6 @@
 """Check merged cells in Excel to understand the data structure"""
 
 import pandas as pd
-import openpyxl
 from openpyxl import load_workbook
 
 def check_merged_cells():
@@ -18,7 +17,7 @@ def check_merged_cells():
     if 'Sheet2' in wb.sheetnames:
         ws = wb['Sheet2']
         
-        print(f"\nSheet2 Merged Cell Ranges:")
+        print("\nSheet2 Merged Cell Ranges:")
         for merged_range in ws.merged_cells.ranges:
             print(f"  {merged_range}")
             
@@ -56,7 +55,7 @@ def check_merged_cells():
     # Now find all AS RELAXED CROP WB entries
     relaxed_crop = df[df['TRIM NAME'].astype(str).str.contains('AS RELAXED CROP WB', case=False, na=False)]
     
-    print(f"\nAS RELAXED CROP WB entries after forward fill:")
+    print("\nAS RELAXED CROP WB entries after forward fill:")
     if not relaxed_crop.empty:
         print(relaxed_crop[['TRIM NAME', 'TRIM CODE', 'SIZE', 'QTY']].to_string())
     else:

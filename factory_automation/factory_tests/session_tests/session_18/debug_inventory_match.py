@@ -2,7 +2,6 @@
 """Debug script to check inventory data mismatch"""
 
 from factory_automation.factory_database.vector_db import ChromaDBClient
-import json
 import pandas as pd
 
 def check_chromadb_data():

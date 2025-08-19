@@ -1,35 +1,75 @@
 # Next Session Context
 
-## Last Updated: August 16, 2025, 10:00 PM
+## Last Updated: 2025-08-19 (Session 19)
 
-## What Was Just Completed (Session 16)
+## Major Architecture Update Planned 🚀
 
-### UI Enhancements:
-1. **Fixed Card Visibility**: Added gradient backgrounds to Customer Information and AI Recommendation cards using inline styles to bypass Gradio CSS limitations
-2. **Updated Inventory Table**: Removed Type column, added Size and Quantity columns to match Excel structure
-3. **Enhanced Visual Design**: Purple gradient for Customer Info, Pink gradient for AI Recommendations
+### Orchestrator Action Proposal System
+- **Proposal Document**: `/docs/ORCHESTRATOR_ACTION_PROPOSAL_SYSTEM.md`
+- **Feature Branch**: `feature/orchestrator-action-proposal-system` (to be created)
+- **Scope**: Transform orchestrator from autonomous executor to intelligent proposal engine
+- **Key Changes**:
+  - Two-phase processing model (Analysis & Proposal → Human Review & Execution)
+  - Workflow-centric approach instead of individual actions
+  - Comprehensive contextual email generation
+  - Risk assessment and alternative suggestions
+  - Enhanced human dashboard for workflow visualization
 
-### Data Ingestion Fixes:
-1. **Discovered Merged Cell Issue**: Excel Sheet2 uses merged cells for item names spanning multiple rows
-2. **Fixed AS RELAXED CROP WB Data**: Properly ingested all 10 size variations (26-44) with tag codes TBALTAG0392N-TBALTAG0401N
-3. **Ingested Sheet2 Data**: Successfully added 295 items from Sheet2 using forward-fill strategy for merged cells
+## What Was Just Completed (Session 19 - UI Fixes & Architecture Planning)
+
+### UI Fixes Implemented ✅:
+1. **Customer Email Display**: Fixed to show actual email instead of company name
+2. **Contextual Email Responses**: Replaced placeholders with intelligent content generation
+3. **Confidence Score Calculation**: Fixed to use actual inventory match scores
+4. **Full Accessibility Support**: Added WCAG AA compliant features
+5. **Keyboard Navigation**: Complete tab support with focus indicators
+6. **Mobile Responsiveness**: Fixed navigation tabs and table layouts
+7. **Table Enhancements**: Added sorting and filtering to inventory matches
+
+### Architecture Planning:
+1. **Comprehensive Proposal Document**: Created detailed plan for orchestrator transformation
+2. **Workflow-Centric Design**: Defined complete action chains for each email type
+3. **Enhanced Email Generation**: Designed multi-factor contextual response system
+
+## Last Updated: 2025-08-17 Evening
+
+## What Was Just Completed (Session 18 - Database Cleanup)
+
+### Database Cleanup:
+1. **PostgreSQL Reset**: Cleared all tables (customers, orders, recommendation_queue, etc.)
+2. **ChromaDB Reset**: Removed and recreated chroma_data directory
+3. **Ready for Fresh Start**: Both databases empty and ready for reingestion
+
+### Code Management:
+1. **Git Reversion**: Reverted from commit 992fd21 back to origin/main (683e917)
+2. **Removed UI Changes**: Discarded attempted fixes that didn't work
+3. **Stable State**: Code synced with remote repository
+
+### MCP Configuration:
+1. **Playwright MCP**: Added browser automation server to ~/.claude.json
+2. **Ready for Testing**: Can now use Playwright for web automation
+
+### Issues Discovered:
+1. **Placeholder Email Text**: Dashboard shows hardcoded "Thank you for your order" instead of real email
+2. **Customer Email Field**: Shows company name instead of email address
+3. **Real Data Misidentified**: TBALWBL0009N is actual inventory, not placeholder
 
 ## Current System State
 
 ### Application Status:
-- **Running**: http://127.0.0.1:7860
-- **All Services Active**: ChromaDB, PostgreSQL, Gradio UI
-- **Background Process**: bash_74 (if still running)
+- **Running**: http://localhost:7860
+- **Services Active**: Orchestrator, Human Manager, CLIP Model
+- **UI Status**: Accessibility compliant, confidence scores fixed
 
 ### Database State:
-- **ChromaDB**: Contains 295 items from Sheet2 with proper size/quantity data
-- **PostgreSQL**: 23 pending items in recommendation_queue
-- **Collections**: tag_inventory_stella (1024-dim embeddings)
+- **ChromaDB**: 569 items in tag_inventory_stella_smart (needs full reingestion)
+- **PostgreSQL**: Clean state (may have test data)
+- **Image Collections**: 291 full images + 3 sample images
 
-### UI State:
-- **Human Review Dashboard**: Fully functional with gradient cards
-- **Inventory Table**: Shows Size and Quantity columns
-- **Image Modals**: Click-to-zoom functionality working
+### Git State:
+- **Branch**: main (synced with origin)
+- **Commit**: 683e917
+- **Status**: Clean, no uncommitted changes
 
 ## How to Test the System
 
@@ -45,9 +85,10 @@ python3 -m dotenv run -- python3 run_factory_automation.py
 - Verify gradient cards are visible
 - Check inventory table shows Size and Quantity
 
-### 3. Search for AS RELAXED CROP WB:
-- Go to Inventory Search tab
-- Search for "AS RELAXED CROP WB"
+### 3. Reingest Inventory Data (REQUIRED):
+```bash
+python3 -m factory_automation.factory_rag.excel_ingestion
+```
 - Should return 10 results with different sizes
 
 ### 4. Verify Data Completeness:
@@ -77,20 +118,26 @@ print(f"Sheet2 items: {len(results['ids'])}")  # Should be 295
 
 ## Next Priorities
 
-### Immediate Tasks:
-1. **Verify All Excel Files**: Check if other Excel files also have Sheet2 data that needs ingestion
-2. **Automate Merged Cell Ingestion**: Create a robust ingestion pipeline that handles merged cells automatically
-3. **Add Stock Status Indicators**: Visual indicators for in-stock/out-of-stock based on quantity
+### Immediate Tasks (Session 20):
+1. **Re-ingest Full Inventory Data**: Run ingestion to get all 1,184 items into ChromaDB
+2. **Fix Customer Email Field**: Implement data migration to extract actual emails from text
+3. **Begin Orchestrator Proposal System**: Create feature branch and start implementation
+
+### Architecture Implementation (Sessions 20-22):
+1. **Create Proposal Models**: Build workflow and action models
+2. **Refactor Orchestrator**: Transform to proposal generation engine
+3. **Update Dashboard**: Add workflow visualization components
+4. **Build Executor Service**: Queue-based execution system
 
 ### Medium Priority:
-1. **Browser Compatibility**: Test gradient cards in Safari, Firefox, Edge
-2. **Loading States**: Add spinners/skeletons while data loads
-3. **Mobile Responsiveness**: Ensure UI works on tablets/phones
+1. **Complete Batch Processing**: Finalize human review batch system
+2. **Document Generation**: Implement ReportLab integration
+3. **Excel Change Logs**: Create inventory modification tracking
 
 ### Long Term:
-1. **Complete Human Review System**: Implement batch processing as per plan
-2. **Payment Tracking**: OCR for UTR/cheque processing
-3. **Production Deployment**: Docker containerization and monitoring
+1. **Payment Tracking**: OCR for UTR/cheque processing
+2. **Production Deployment**: Docker containerization and monitoring
+3. **Gmail Live Integration**: Once IT provides domain delegation
 
 ## Critical Code Patterns
 

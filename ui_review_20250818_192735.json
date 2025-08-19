@@ -1,0 +1,27 @@
+{
+  "timestamp": "2025-08-18T19:26:05.502876",
+  "checks": {},
+  "screenshots": [],
+  "issues": {
+    "blockers": [
+      "Failed to load application on mobile: Page.goto: Timeout 30000ms exceeded.\nCall log:\n  - navigating to \"http://localhost:7860/\", waiting until \"networkidle\"\n",
+      "Failed to load application on tablet: Page.goto: Timeout 30000ms exceeded.\nCall log:\n  - navigating to \"http://localhost:7860/\", waiting until \"networkidle\"\n",
+      "Failed to load application on desktop: Page.goto: Timeout 30000ms exceeded.\nCall log:\n  - navigating to \"http://localhost:7860/\", waiting until \"networkidle\"\n"
+    ],
+    "high_priority": [],
+    "medium_priority": [],
+    "low_priority": [],
+    "suggestions": []
+  },
+  "metrics": {},
+  "summary": {
+    "total_issues": 3,
+    "blockers": 3,
+    "high_priority": 0,
+    "medium_priority": 0,
+    "low_priority": 0,
+    "suggestions": 0,
+    "screenshots_captured": 0
+  },
+  "overall_status": "BLOCKED"
+}

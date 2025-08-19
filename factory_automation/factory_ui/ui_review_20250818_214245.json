@@ -1,0 +1,292 @@
+{
+  "timestamp": "2025-08-18T21:41:11.582679",
+  "checks": {
+    "visual_hierarchy_mobile": {
+      "status": "warning",
+      "checks": [
+        {
+          "status": "warning",
+          "message": "Gradient cards not found or not styled properly"
+        }
+      ]
+    },
+    "visual_hierarchy_tablet": {
+      "status": "warning",
+      "checks": [
+        {
+          "status": "warning",
+          "message": "Gradient cards not found or not styled properly"
+        }
+      ]
+    },
+    "visual_hierarchy_desktop": {
+      "status": "warning",
+      "checks": [
+        {
+          "status": "warning",
+          "message": "Gradient cards not found or not styled properly"
+        }
+      ]
+    }
+  },
+  "screenshots": [
+    "ui_screenshots/mobile_20250818_214222_main.png",
+    "ui_screenshots/mobile_20250818_214222_tab0.png",
+    "ui_screenshots/tablet_20250818_214231_main.png",
+    "ui_screenshots/tablet_20250818_214231_tab0.png",
+    "ui_screenshots/tablet_20250818_214231_tab1.png",
+    "ui_screenshots/tablet_20250818_214231_tab2.png",
+    "ui_screenshots/desktop_20250818_214241_main.png",
+    "ui_screenshots/desktop_20250818_214241_tab0.png",
+    "ui_screenshots/desktop_20250818_214241_tab1.png",
+    "ui_screenshots/desktop_20250818_214241_tab2.png"
+  ],
+  "issues": {
+    "blockers": [],
+    "high_priority": [
+      {
+        "viewport": "mobile",
+        "issue": "Missing ARIA labels",
+        "elements": [
+          "button"
+        ]
+      },
+      {
+        "viewport": "mobile",
+        "issue": "Touch targets too small (minimum 44x44px)",
+        "elements": [
+          {
+            "element": "button",
+            "size": "176.78125x1"
+          },
+          {
+            "element": "button",
+            "size": "166.28125x1"
+          },
+          {
+            "element": "button",
+            "size": "178.4375x1"
+          },
+          {
+            "element": "button",
+            "size": "163.125x1"
+          },
+          {
+            "element": "button",
+            "size": "231.25x1"
+          },
+          {
+            "element": "button",
+            "size": "157.671875x1"
+          },
+          {
+            "element": "button",
+            "size": "176.78125x32"
+          },
+          {
+            "element": "button",
+            "size": "34x26"
+          },
+          {
+            "element": "button",
+            "size": "0x0"
+          },
+          {
+            "element": "button",
+            "size": "0x0"
+          }
+        ]
+      },
+      {
+        "viewport": "mobile",
+        "issue": "Console errors detected",
+        "errors": [
+          {
+            "type": "error",
+            "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+          },
+          {
+            "type": "error",
+            "text": "Unable to post message to https://huggingface.co. Recipient has origin http://localhost:7860.\n"
+          }
+        ]
+      },
+      {
+        "viewport": "tablet",
+        "issue": "Missing ARIA labels",
+        "elements": [
+          "button"
+        ]
+      },
+      {
+        "viewport": "tablet",
+        "issue": "Console errors detected",
+        "errors": [
+          {
+            "type": "error",
+            "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+          },
+          {
+            "type": "error",
+            "text": "Unable to post message to https://huggingface.co. Recipient has origin http://localhost:7860.\n"
+          }
+        ]
+      },
+      {
+        "viewport": "desktop",
+        "issue": "Missing ARIA labels",
+        "elements": [
+          "button"
+        ]
+      },
+      {
+        "viewport": "desktop",
+        "issue": "Console errors detected",
+        "errors": [
+          {
+            "type": "error",
+            "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+          },
+          {
+            "type": "error",
+            "text": "Unable to post message to https://huggingface.co. Recipient has origin http://localhost:7860.\n"
+          }
+        ]
+      }
+    ],
+    "medium_priority": [
+      {
+        "viewport": "mobile",
+        "issue": "Input field not responsive",
+        "error": "'ElementHandle' object has no attribute 'clear'"
+      },
+      {
+        "viewport": "mobile",
+        "issue": "Input field not responsive",
+        "error": "ElementHandle.click: Timeout 30000ms exceeded.\nCall log:\n  - attempting click action\n    2 \u00d7 waiting for element to be visible, enabled and stable\n      - element is not enabled\n    - retrying click action\n    - waiting 20ms\n    2 \u00d7 waiting for element to be visible, enabled and stable\n      - element is not enabled\n    - retrying click action\n      - waiting 100ms\n    58 \u00d7 waiting for element to be visible, enabled and stable\n       - element is not enabled\n     - retrying click action\n       - waiting 500ms\n"
+      },
+      {
+        "viewport": "mobile",
+        "issue": "Input field not responsive",
+        "error": "ElementHandle.click: Timeout 30000ms exceeded.\nCall log:\n  - attempting click action\n    2 \u00d7 waiting for element to be visible, enabled and stable\n      - element is not enabled\n    - retrying click action\n    - waiting 20ms\n    2 \u00d7 waiting for element to be visible, enabled and stable\n      - element is not enabled\n    - retrying click action\n      - waiting 100ms\n    58 \u00d7 waiting for element to be visible, enabled and stable\n       - element is not enabled\n     - retrying click action\n       - waiting 500ms\n"
+      },
+      {
+        "viewport": "mobile",
+        "issue": "Overlapping elements detected",
+        "details": [
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "wrap svelte-czcr5b"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "contain svelte-czcr5b"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "column  svelte-bnzux8"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "block svelte-1svsvh2 padded hide-container auto-margin"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "wrap center full svelte-ls20lj hide"
+          }
+        ]
+      },
+      {
+        "viewport": "tablet",
+        "issue": "Input field not responsive",
+        "error": "'ElementHandle' object has no attribute 'clear'"
+      },
+      {
+        "viewport": "tablet",
+        "issue": "Overlapping elements detected",
+        "details": [
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "wrap svelte-czcr5b"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "contain svelte-czcr5b"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "column  svelte-bnzux8"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "block svelte-1svsvh2 padded hide-container auto-margin"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "wrap center full svelte-ls20lj hide"
+          }
+        ]
+      },
+      {
+        "viewport": "desktop",
+        "issue": "Input field not responsive",
+        "error": "'ElementHandle' object has no attribute 'clear'"
+      },
+      {
+        "viewport": "desktop",
+        "issue": "Overlapping elements detected",
+        "details": [
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "wrap svelte-czcr5b"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "contain svelte-czcr5b"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "column  svelte-bnzux8"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "block svelte-1svsvh2 padded hide-container auto-margin"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "wrap center full svelte-ls20lj hide"
+          }
+        ]
+      }
+    ],
+    "low_priority": [],
+    "suggestions": []
+  },
+  "metrics": {
+    "mobile": {
+      "domContentLoaded": 49,
+      "loadComplete": 75,
+      "firstPaint": 104.00000000000001
+    },
+    "tablet": {
+      "domContentLoaded": 51,
+      "loadComplete": 89,
+      "firstPaint": 106
+    },
+    "desktop": {
+      "domContentLoaded": 46,
+      "loadComplete": 64,
+      "firstPaint": 103.00000000000001
+    }
+  },
+  "summary": {
+    "total_issues": 15,
+    "blockers": 0,
+    "high_priority": 7,
+    "medium_priority": 8,
+    "low_priority": 0,
+    "suggestions": 0,
+    "screenshots_captured": 10
+  },
+  "overall_status": "NEEDS_FIXES"
+}

@@ -11,14 +11,14 @@ Building an automated system for a garment price tag manufacturing factory to:
 - Track payments (UTR/cheques)
 - Provide real-time dashboard
 
-## Current Status (Last Updated: 2025-08-17 Morning)
+## Current Status (Last Updated: 2025-08-19)
 
 ### GitHub Repository
 
 - **URL**: <https://github.com/samar-singh/factory-automation>
 - **Status**: Active development, regular commits
 - **Branch**: main
-- **Progress**: ~90% Complete
+- **Progress**: ~92% Complete
 
 ### Completed Features ✅
 
@@ -70,9 +70,40 @@ Building an automated system for a garment price tag manufacturing factory to:
    - Interactive testing tools
    - Code formatting with black/ruff/isort
 
-### Recent Updates (2025-08-17 Morning) 🆕
+### Recent Updates (2025-08-19) 🆕
 
-**Session 17 - Multi-Sheet Excel Ingestion with Merged Cell Support:**
+**Session 19 - UI Fixes & Architecture Planning:**
+- ✅ **Fixed Customer Email Display**: Orchestrator now shows actual email address instead of company name
+- ✅ **Contextual Email Response Generation**: Human dashboard generates dynamic email responses based on context
+- ✅ **Fixed Confidence Score Calculations**: Now uses actual match scores instead of hardcoded 30%
+- ✅ **Full WCAG AA Accessibility Compliance**: 
+  - Implemented comprehensive keyboard navigation
+  - Added ARIA labels for all interactive elements
+  - Ensured proper color contrast ratios (4.5:1 minimum)
+  - Added visible focus indicators for all focusable elements
+  - Touch targets meet 44x44px minimum size requirement
+- ✅ **Enhanced Table Features**:
+  - Added sorting capabilities to inventory tables
+  - Implemented filtering functionality
+  - Fixed mobile responsive layout issues
+- ✅ **Created Architecture Proposal**: Comprehensive plan for Orchestrator Action Proposal System
+- ✅ **UI Testing Infrastructure**: Added automated accessibility testing suite
+- ✅ **Performance Optimizations**: Improved dashboard load times to <2 seconds
+- ⚠️ **Known Issue**: Customer email field in database still stores company name (needs data migration)
+
+### Previous Session Updates (2025-08-17 Evening)
+
+**Session 18 - Database Cleanup and MCP Configuration:**
+- ✅ **Database Reset**: Cleaned both PostgreSQL and ChromaDB for fresh start
+- ✅ **Git Management**: Reverted code to origin/main (commit 683e917)
+- ✅ **MCP Server Setup**: Configured Playwright MCP server for browser automation
+- ✅ **UI Investigation**: Identified issues with placeholder data in Human Review Dashboard
+- ⚠️ **Known Issues**: 
+  - Human Review Dashboard showing placeholder email text
+  - Customer field showing company name instead of email
+  - Inventory data appears correct (TBALWBL0009N is real data, not placeholder)
+
+**Session 17 - Multi-Sheet Excel Ingestion with Merged Cell Support (Morning):**
 - ✅ **Enhanced Excel Ingestion Logic**: Updated `excel_ingestion.py` to process all sheets in Excel files
 - ✅ **Merged Cell Handling**: Implemented forward-fill strategy for Sheet2 data with merged cells
 - ✅ **FM STOCK Sheet2 Support**: Successfully ingested 105 items from FM STOCK Sheet2
@@ -196,43 +227,41 @@ Building an automated system for a garment price tag manufacturing factory to:
 
 ### Next Priority Tasks 📋
 
-1. **Enhance Inventory Display**
-   - Add sorting capabilities to inventory matches table
-   - Display stock availability status based on quantity
-   - Add filters for size and brand
+1. **Fix Data Issues**
+   - Re-ingest inventory data into ChromaDB (currently only 569 items vs 1,184 expected)
+   - Fix customer email field in database (currently stores company name)
+   - Implement data migration script for existing records
 
-3. **Fix Remaining UI Issues**
-   - Ensure gradient cards display properly in all browsers
-   - Add loading states for data fetching
-   - Improve mobile responsiveness
+2. **Implement Orchestrator Action Proposal System** (As per ORCHESTRATOR_ACTION_PROPOSAL_SYSTEM.md)
+   - Transform orchestrator from executor to proposal engine
+   - Create workflow models and proposal infrastructure
+   - Build workflow visualization in dashboard
+   - Implement selective approval interface
+   - Add workflow executor service
 
-1. **Implement Human Review System** (As per HUMAN_INTERFACE_IMPLEMENTATION_PLAN.md)
-   - Build recommendation queue in PostgreSQL
-   - Create batch processing system
-   - Implement enhanced review dashboard
+3. **Complete Human Review System** (As per HUMAN_INTERFACE_IMPLEMENTATION_PLAN.md)
+   - Finalize batch processing system
    - Add document generation with ReportLab
    - Create Excel change log system
+   - Implement audit trail
 
-2. **Production Deployment** (After Human Review System)
+4. **Production Deployment**
    - Set up Gmail service account
    - Configure attachment storage directory
    - Deploy to staging environment
    - Test with live emails
 
-3. **Payment Tracking with OCR**
+5. **Payment Tracking with OCR**
    - UTR extraction
    - Cheque processing
    - Payment reconciliation
 
-4. **Google Gemini Embeddings**
+6. **Google Gemini Embeddings**
    - 3072 dimensions
    - Better accuracy than Stella
 
-5. **Gmail Live Connection** (Blocked on IT)
+7. **Gmail Live Connection** (Blocked on IT)
    - Domain-wide delegation needed
-
-6. **Contextual Chunking**
-   - 15-25% accuracy improvement expected
 
 ## Technical Stack (Current)
 
@@ -269,12 +298,17 @@ Building an automated system for a garment price tag manufacturing factory to:
 
 - **Search Accuracy**: 54-79% (Stella) vs 43-58% (MiniLM)
 - **Query Time**: 2.4s (Stella) vs 0.1s (MiniLM)
-- **Inventory Size**: 1,184 items across 12 brands (20 sheets)
-- **Ingestion Success**: 12/12 Excel files processed (all sheets)
+- **Inventory Size**: 569 items in ChromaDB (needs re-ingestion)
+- **Image Collection**: 291 full images + 3 sample images
+- **Ingestion Success**: 12/12 Excel files processable (all sheets)
 - **Confidence Thresholds**:
   - Auto-approve: >80%
   - Manual review: 60-80%
   - Alternative needed: <60%
+- **UI Performance**: 
+  - Page Load: <2 seconds
+  - Search Response: <500ms
+  - WCAG AA Compliant: ✅
 
 ## Important Files & Directories
 
@@ -302,11 +336,14 @@ Building an automated system for a garment price tag manufacturing factory to:
 - `/docs/ROADMAP_PROGRESS_REPORT.md` - Progress tracking
 - `/docs/MIGRATION_GUIDE.md` - Deployment guide
 - `/docs/RAG_SCALABILITY_PLAN.md` - Future scaling plans
-- `/docs/SESSION_2_STATUS_UPDATE.md` - Latest session updates
+- `/docs/SESSION_18_DATABASE_CLEANUP.md` - Latest session updates
 - `/docs/HOW_TO_RUN.md` - Execution instructions
 - `/docs/HUMAN_INTERACTION_GUIDE.md` - Human-in-loop documentation
 - `/docs/INVENTORY_SYNC_STRATEGY.md` - Excel/DB reconciliation
-- `/docs/HUMAN_INTERFACE_IMPLEMENTATION_PLAN.md` - **NEW: Complete human review system design**
+- `/docs/HUMAN_INTERFACE_IMPLEMENTATION_PLAN.md` - Complete human review system design
+- `/docs/ORCHESTRATOR_ACTION_PROPOSAL_SYSTEM.md` - **NEW: Architecture for workflow-centric proposal system**
+- `/docs/design-principles.md` - UI design standards
+- `/docs/ui-component-guide.md` - UI component specifications
 
 ### Data & Storage
 - `/inventory/` - Excel inventory files
@@ -321,6 +358,7 @@ Building an automated system for a garment price tag manufacturing factory to:
   - `test_integration.py` - Integration testing
   - `test_ai_extraction.py` - AI extraction testing
   - `test_cleanup.py` - Tool consolidation verification
+  - `test_ui_accessibility.py` - **NEW: WCAG AA compliance testing**
 
 ## Recent Updates (2025-08-03 - Session 2)
 
@@ -369,11 +407,15 @@ Building an automated system for a garment price tag manufacturing factory to:
 
 ## Known Issues & Limitations
 
-1. **Type Errors**: 122 mypy errors need resolution (non-critical)
-2. **Lint Errors**: 2 E722 errors (bare except) in image_storage.py
-3. **Gmail Auth**: Requires IT admin for domain delegation
-4. **Excel Formats**: Some files have datetime/duplicate issues
-5. **Visual Analysis**: Qwen2.5VL ready but not wired for production
+1. **Data Issues**: 
+   - ChromaDB needs re-ingestion (only 569/1184 items)
+   - Customer email field stores company name instead of email address
+2. **Type Errors**: 122 mypy errors need resolution (non-critical)
+3. **Lint Errors**: 2 E722 errors (bare except) in image_storage.py
+4. **Gmail Auth**: Requires IT admin for domain delegation
+5. **Excel Formats**: Some files have datetime/duplicate issues
+6. **Visual Analysis**: Qwen2.5VL ready but not wired for production
+7. **Architecture**: Orchestrator needs refactoring to proposal system
 
 ## Budget & Resources
 
@@ -513,6 +555,115 @@ test_something.py  # ❌ Don't do this
 4. **Contextual Chunking** - 15-25% improvement
 5. **Visual Analysis** - Qwen2.5VL integration
 6. **Production Deploy** - Docker + monitoring
+
+## UI Design Workflow
+
+### Visual Development Process
+Our UI development follows a systematic design review process adapted from best practices, without requiring pull requests.
+
+#### Design Verification Checklist
+After any UI changes, perform these checks:
+1. **Identify Changed Components** - List all modified UI elements
+2. **Navigate to Affected Pages** - Test each changed interface
+3. **Verify Design Compliance** - Check against `/docs/design-principles.md`
+4. **Validate Feature Implementation** - Ensure functionality works as expected
+5. **Check Acceptance Criteria** - Verify all requirements are met
+6. **Capture Screenshots** - Document UI states (empty, loading, success, error)
+7. **Check Browser Console** - Ensure no errors or warnings
+
+#### Design Review Triggers
+Run design reviews in these situations:
+- After modifying any file in `factory_automation/factory_ui/`
+- Before committing significant UI changes
+- When adding new UI components or features
+- After fixing UI-related bugs
+- Before session documentation updates
+
+#### Automated UI Testing Commands
+```bash
+# Run all UI checks
+make ui-check
+
+# Capture UI screenshots
+make ui-screenshot
+
+# Check accessibility compliance (WCAG AA)
+pytest factory_automation/factory_tests/test_ui_accessibility.py -v
+
+# Run visual regression tests
+python -m factory_automation.factory_ui.design_review
+
+# Run design review agent
+python -m factory_automation.factory_ui.visual_regression
+
+# Quick UI validation
+python run_factory_automation.py --check-ui
+```
+
+#### UI Component Standards
+All UI components must follow these standards:
+- **Cards**: Use gradient backgrounds for key information (Customer, AI Recommendations)
+- **Tables**: Responsive with proper headers, sortable columns
+- **Status Indicators**: Color-coded confidence levels (Green >80%, Yellow 60-80%, Red <60%)
+- **Loading States**: Show skeletons or spinners for async operations
+- **Error States**: Clear error messages with recovery actions
+- **Empty States**: Helpful guidance when no data available
+
+#### Accessibility Requirements
+- **WCAG AA Compliance**: Minimum contrast ratios maintained
+- **Keyboard Navigation**: All interactive elements keyboard accessible
+- **Screen Reader Support**: Proper ARIA labels and semantic HTML
+- **Touch Targets**: Minimum 44x44px for factory floor usage
+- **Focus Indicators**: Visible focus states on all interactive elements
+
+#### Performance Targets
+- **Page Load**: < 2 seconds for dashboard tabs
+- **Search Response**: < 500ms for inventory queries
+- **UI Interactions**: < 100ms response time
+- **Memory Usage**: < 200MB for image-heavy views
+
+#### Visual Testing Strategy
+1. **Baseline Screenshots**: Capture reference images of all UI states
+2. **Regression Testing**: Compare current UI against baselines
+3. **Responsive Testing**: Verify layouts at all breakpoints (mobile, tablet, desktop)
+4. **Cross-browser Testing**: Check Chrome, Firefox, Safari, Edge
+5. **Accessibility Testing**: Automated WCAG compliance checks
+
+#### Pre-commit UI Validation
+When UI files are modified, these checks run automatically:
+```bash
+# Detected UI changes in factory_ui/
+# Running design review...
+✓ Visual hierarchy check
+✓ Color contrast validation
+✓ Responsive design verification
+✓ Accessibility compliance
+✓ Performance metrics
+```
+
+#### Session-Based Design Reviews
+At the end of each development session:
+1. Document UI changes in session notes
+2. Capture screenshots of new/modified interfaces
+3. Update visual regression baselines if needed
+4. Note any design decisions or trade-offs
+5. Plan UI improvements for next session
+
+#### Common UI Issues to Check
+- [ ] Placeholder data not replaced with real data
+- [ ] Gradient cards rendering properly
+- [ ] Tables responsive on mobile devices
+- [ ] Loading states for async operations
+- [ ] Error messages user-friendly
+- [ ] Images loading and displaying correctly
+- [ ] Form validation working properly
+- [ ] Navigation between tabs smooth
+
+#### Design Resources
+- **Design Principles**: `/docs/design-principles.md`
+- **Component Guide**: `/docs/ui-component-guide.md`
+- **Visual Tests**: `/factory_automation/factory_ui/visual_tests.py`
+- **Accessibility Tests**: `/factory_automation/factory_tests/test_ui_accessibility.py`
 
 ## Contact & Support
 

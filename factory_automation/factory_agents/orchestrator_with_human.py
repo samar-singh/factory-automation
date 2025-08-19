@@ -141,6 +141,28 @@ class OrchestratorWithHuman(AgenticOrchestratorV3):
                     confidence_score = avg_score
                 elif result.get("extraction_confidence"):
                     confidence_score = result["extraction_confidence"]
+                
+                # If confidence is still 0, try to calculate from inventory matches
+                if confidence_score == 0 and result.get("inventory_matches"):
+                    matches = result["inventory_matches"]
+                    if isinstance(matches, list) and matches:
+                        # Calculate average confidence from top matches
+                        match_scores = []
+                        for match in matches[:10]:  # Top 10 matches
+                            if isinstance(match, dict):
+                                # Try different keys for confidence/score
+                                score = match.get("confidence", 
+                                       match.get("score", 
+                                       match.get("similarity_score", 
+                                       match.get("distance", 0))))
+                                # If distance, convert to similarity (1 - distance)
+                                if "distance" in match and "score" not in match:
+                                    score = max(0, 1 - score)
+                                match_scores.append(score)
+                        
+                        if match_scores:
+                            confidence_score = sum(match_scores) / len(match_scores)
+                            logger.info(f"Calculated confidence from matches: {confidence_score:.2%}")
 
                 logger.info(
                     f"Creating review for order {order_id} with confidence {confidence_score:.2%}"

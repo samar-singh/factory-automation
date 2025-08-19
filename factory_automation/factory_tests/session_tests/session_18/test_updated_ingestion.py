@@ -34,7 +34,7 @@ def test_sheet2_ingestion():
         if result['status'] == 'success':
             print(f"✅ Status: {result['status']}")
             print(f"📊 Total items ingested: {result.get('total_items_ingested', 0)}")
-            print(f"📑 Sheets processed:")
+            print("📑 Sheets processed:")
             
             for sheet_info in result.get('sheets_processed', []):
                 print(f"   - {sheet_info['sheet']}: {sheet_info['items_ingested']} items")

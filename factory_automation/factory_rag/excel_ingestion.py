@@ -346,7 +346,7 @@ class ExcelInventoryIngestion:
                 
                 # Handle merged cells for Sheet2 (common pattern in inventory files)
                 if sheet.lower() == 'sheet2' or 'sheet2' in sheet.lower():
-                    logger.info(f"Detected Sheet2, checking for merged cells...")
+                    logger.info("Detected Sheet2, checking for merged cells...")
                     
                     # Check if TRIM NAME column has many NaN values (indicates merged cells)
                     if 'TRIM NAME' in df.columns:
