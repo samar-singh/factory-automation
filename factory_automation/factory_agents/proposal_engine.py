@@ -853,8 +853,9 @@ Factory Automation Team"""
         
         if order_data and order_data.items:
             for item in order_data.items:
-                requirements["items_requested"].append(item.tag_specification.description if hasattr(item, 'tag_specification') else 'Item')
-                requirements["quantities"][item.tag_specification.description if hasattr(item, 'tag_specification') else 'Item'] = item.quantity
+                item_desc = item.tag_specification.tag_code if (hasattr(item, 'tag_specification') and item.tag_specification) else 'Item'
+                requirements["items_requested"].append(item_desc)
+                requirements["quantities"][item_desc] = item.quantity_ordered
         
         # Extract from email body
         body = email_data.get("body", "")
