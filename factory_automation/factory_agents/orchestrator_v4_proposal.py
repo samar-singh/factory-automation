@@ -3,12 +3,14 @@
 import asyncio
 import json
 import logging
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from agents import Agent, Runner, function_tool, trace
 
 from ..factory_config.settings import settings
+from ..factory_utils.trace_monitor import trace_monitor
 from ..factory_database.vector_db import ChromaDBClient
 from ..factory_models import (
     ExtractedOrder,
@@ -507,14 +509,29 @@ enough for humans to understand and approve/modify before execution."""
         ]
     
     async def process_email(self, email_data: Dict[str, Any]) -> ProposedWorkflow:
-        """Process a single email and generate a workflow proposal"""
+        """Process a single email and generate a workflow proposal with tracing"""
         
-        # Run the agent to generate proposal
-        result = await self.runner.run(
-            agent=self.agent,
-            messages=[{
-                "role": "user",
-                "content": f"""Process this email and generate a complete workflow proposal:
+        logger.info(f"Processing email for proposal: {email_data.get('subject', 'No subject')}")
+        
+        # Create trace name based on email
+        trace_name = f"Proposal_Generation_{email_data.get('subject', 'No_subject')[:30]}"
+        
+        # Use trace context for monitoring
+        with trace(trace_name):
+            # Start monitoring this trace
+            trace_monitor.start_trace(
+                trace_name,
+                {
+                    "email_from": email_data.get("from", "Unknown"),
+                    "email_subject": email_data.get("subject", "No subject"),
+                    "orchestrator_version": "v4_proposal",
+                    "mode": "proposal_generation"
+                }
+            )
+            
+            try:
+                # Prepare prompt for agent
+                prompt = f"""Process this email and generate a complete workflow proposal:
                 
 Subject: {email_data.get('subject', 'No subject')}
 From: {email_data.get('from', 'unknown@email.com')}
@@ -527,61 +544,146 @@ Instructions:
 3. Use analyze_attachments_for_proposal if there are attachments
 4. Use enrich_proposal_with_context to add customer history
 5. Return the workflow_id of the generated proposal"""
-            }]
-        )
-        
-        # Extract workflow_id from agent response
-        workflow_id = None
-        if result and result.messages:
-            last_message = result.messages[-1]
-            if hasattr(last_message, 'content'):
-                # Try to extract workflow_id from response
-                import re
-                match = re.search(r'WF-\d{8}-\w{8}', str(last_message.content))
-                if match:
-                    workflow_id = match.group(0)
-        
-        # Find and return the proposal
-        if workflow_id:
-            for proposal in self.proposals:
-                if proposal.workflow_id == workflow_id:
-                    return proposal
-        
-        # Return the most recent proposal if we couldn't find specific one
-        if self.proposals:
-            return self.proposals[-1]
-        
-        return None
+                
+                # Run the agent to generate proposal
+                result = await self.runner.run(self.agent, prompt)
+                
+                # Extract tool calls from result for tracing
+                tool_calls = []
+                if hasattr(result, 'raw_responses'):
+                    for response in result.raw_responses:
+                        if hasattr(response, 'model_response'):
+                            model_resp = response.model_response
+                            if hasattr(model_resp, 'choices'):
+                                for choice in model_resp.choices:
+                                    if hasattr(choice, 'message') and hasattr(choice.message, 'tool_calls'):
+                                        if choice.message.tool_calls:
+                                            for tc in choice.message.tool_calls:
+                                                tool_call = {
+                                                    "tool": tc.function.name if hasattr(tc.function, 'name') else "unknown",
+                                                    "args": json.loads(tc.function.arguments) if hasattr(tc.function, 'arguments') else {},
+                                                    "result": "See logs"
+                                                }
+                                                tool_calls.append(tool_call)
+                                                # Add to trace monitor
+                                                trace_monitor.add_tool_call(
+                                                    tool_name=tool_call["tool"],
+                                                    args=tool_call["args"],
+                                                    result=tool_call["result"]
+                                                )
+                
+                # Log trace information
+                logger.info(f"Trace created: {trace_name}")
+                logger.info(f"Proposal generation tool calls: {len(tool_calls)}")
+                
+                # Extract workflow_id from agent response
+                workflow_id = None
+                if result:
+                    # RunResult has different structure than expected
+                    result_text = str(result)
+                    # Try to extract workflow_id from response
+                    match = re.search(r'WF-\d{8}-\w{8}', result_text)
+                    if match:
+                        workflow_id = match.group(0)
+                
+                # Find the proposal
+                proposal = None
+                if workflow_id:
+                    for p in self.proposals:
+                        if p.workflow_id == workflow_id:
+                            proposal = p
+                            break
+                
+                # If not found by ID, get the most recent
+                if not proposal and self.proposals:
+                    proposal = self.proposals[-1]
+                
+                # Add proposal details to trace
+                if proposal:
+                    trace_monitor.add_decision(
+                        decision_type="proposal_generated",
+                        details={
+                            "workflow_id": proposal.workflow_id,
+                            "workflow_type": proposal.workflow_type.value,
+                            "confidence": proposal.confidence,
+                            "actions_count": len(proposal.proposed_actions),
+                            "risks_count": len(proposal.risks) if proposal.risks else 0,
+                            "alternatives_count": len(proposal.alternatives) if proposal.alternatives else 0
+                        }
+                    )
+                
+                # End trace with summary
+                final_output = f"Generated proposal {proposal.workflow_id if proposal else 'None'}"
+                trace_monitor.end_trace("completed", final_output)
+                
+                return proposal
+                
+            except Exception as e:
+                logger.error(f"Error in proposal generation: {e}")
+                trace_monitor.end_trace("failed", str(e))
+                raise
     
     async def start_monitoring(self, interval_seconds: int = 30):
-        """Start monitoring emails and generating proposals"""
+        """Start monitoring emails and generating proposals with tracing"""
         self.is_monitoring = True
         logger.info(f"Starting email monitoring every {interval_seconds} seconds")
         
+        cycle_count = 0
         while self.is_monitoring:
-            try:
-                # Check for new emails
-                emails = await self.gmail_agent.poll_emails() if self.gmail_agent else []
-                
-                for email in emails:
-                    logger.info(f"Processing email: {email.get('subject', 'No subject')}")
+            cycle_count += 1
+            trace_name = f"Proposal_Monitoring_Cycle_{cycle_count}"
+            
+            with trace(trace_name):
+                try:
+                    # Start monitoring trace
+                    trace_monitor.start_trace(
+                        trace_name,
+                        {
+                            "cycle": cycle_count,
+                            "orchestrator_version": "v4_proposal",
+                            "mode": "monitoring"
+                        }
+                    )
                     
-                    # Generate proposal for this email
-                    proposal = await self.process_email(email)
+                    # Check for new emails
+                    emails = await self.gmail_agent.poll_emails() if self.gmail_agent else []
                     
-                    if proposal:
-                        logger.info(f"Generated proposal {proposal.workflow_id} with confidence {proposal.confidence:.2%}")
-                        logger.info(f"Proposal type: {proposal.workflow_type.value}")
-                        logger.info(f"Actions proposed: {len(proposal.proposed_actions)}")
-                    else:
-                        logger.warning("Failed to generate proposal for email")
-                
-                # Wait before next check
-                await asyncio.sleep(interval_seconds)
-                
-            except Exception as e:
-                logger.error(f"Error in monitoring loop: {e}")
-                await asyncio.sleep(interval_seconds)
+                    proposals_generated = []
+                    for email in emails:
+                        logger.info(f"Processing email: {email.get('subject', 'No subject')}")
+                        
+                        # Generate proposal for this email (has its own trace)
+                        proposal = await self.process_email(email)
+                        
+                        if proposal:
+                            proposals_generated.append(proposal.workflow_id)
+                            logger.info(f"Generated proposal {proposal.workflow_id} with confidence {proposal.confidence:.2%}")
+                            logger.info(f"Proposal type: {proposal.workflow_type.value}")
+                            logger.info(f"Actions proposed: {len(proposal.proposed_actions)}")
+                            
+                            # Add to monitoring trace
+                            trace_monitor.add_decision(
+                                decision_type="proposal_queued",
+                                details={
+                                    "workflow_id": proposal.workflow_id,
+                                    "confidence": proposal.confidence
+                                }
+                            )
+                        else:
+                            logger.warning("Failed to generate proposal for email")
+                    
+                    # End monitoring cycle trace
+                    summary = f"Cycle {cycle_count}: Processed {len(emails)} emails, generated {len(proposals_generated)} proposals"
+                    trace_monitor.end_trace("completed", summary)
+                    logger.info(f"Monitoring cycle {cycle_count} complete: {summary}")
+                    
+                    # Wait before next check
+                    await asyncio.sleep(interval_seconds)
+                    
+                except Exception as e:
+                    logger.error(f"Error in monitoring loop: {e}")
+                    trace_monitor.end_trace("failed", str(e))
+                    await asyncio.sleep(interval_seconds)
     
     def stop_monitoring(self):
         """Stop email monitoring"""
