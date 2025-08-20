@@ -11,14 +11,14 @@ Building an automated system for a garment price tag manufacturing factory to:
 - Track payments (UTR/cheques)
 - Provide real-time dashboard
 
-## Current Status (Last Updated: 2025-08-19)
+## Current Status (Last Updated: 2025-01-19)
 
 ### GitHub Repository
 
 - **URL**: <https://github.com/samar-singh/factory-automation>
 - **Status**: Active development, regular commits
-- **Branch**: main
-- **Progress**: ~92% Complete
+- **Branch**: feature/orchestrator-action-proposal-system
+- **Progress**: ~94% Complete
 
 ### Completed Features ✅
 
@@ -70,7 +70,24 @@ Building an automated system for a garment price tag manufacturing factory to:
    - Interactive testing tools
    - Code formatting with black/ruff/isort
 
-### Recent Updates (2025-08-19) 🆕
+### Recent Updates (2025-01-19) 🆕
+
+**Session 20 - Proposal-Based Orchestrator Implementation:**
+- ✅ **Implemented Orchestrator V4 Proposal System**: Complete transformation from autonomous execution to proposal generation
+- ✅ **Created Comprehensive Workflow Models**: New workflow_models.py with ProposedWorkflow, ProposedAction, RiskAssessment
+- ✅ **Built Proposal Engine**: Sophisticated engine for analyzing emails and generating complete workflow proposals
+- ✅ **Converted All Tools to Read-Only**: 7 proposal-generating tools that don't execute any actions
+- ✅ **Added Risk Assessment**: Every proposal includes risk analysis and mitigation strategies
+- ✅ **Customer Tier Classification**: Automatic customer segmentation (VIP, Premium, Regular, New, Inactive)
+- ✅ **Alternative Actions**: Each proposal includes alternative approaches for flexibility
+- ✅ **Confidence Scoring**: Multi-level confidence metrics for informed decision making
+- ✅ **Email Draft Generation**: Context-aware email templates ready for human review
+- ✅ **Database Operation Planning**: Proposals include all required database operations
+- ✅ **Comprehensive Testing**: Full test suite for proposal generation and workflow management
+- 🎯 **Architecture Achievement**: Successfully separated proposal generation from execution
+- 📊 **Model Usage Clarified**: ExtractedOrder flows through OrderProcessorAgent → ProposalEngine → ProposedWorkflow
+
+### Previous Session Updates (2025-08-19)
 
 **Session 19 - UI Fixes & Architecture Planning:**
 - ✅ **Fixed Customer Email Display**: Orchestrator now shows actual email address instead of company name

@@ -1,212 +1,260 @@
 # Next Session Context
+**Last Updated:** January 19, 2025  
+**Last Session:** Session 20 - Proposal-Based Orchestrator Implementation
 
-## Last Updated: 2025-08-19 (Session 19)
+## Current State Summary
 
-## Major Architecture Update Planned 🚀
+### What Was Just Completed ✅
+1. **Orchestrator V4 Proposal System** - Fully implemented and tested
+2. **Workflow Models** - Comprehensive data models for proposals
+3. **Proposal Engine** - Sophisticated analysis and generation engine
+4. **Testing Suite** - Complete test coverage for proposal system
+5. **Documentation** - Updated CLAUDE.md and created session docs
 
-### Orchestrator Action Proposal System
-- **Proposal Document**: `/docs/ORCHESTRATOR_ACTION_PROPOSAL_SYSTEM.md`
-- **Feature Branch**: `feature/orchestrator-action-proposal-system` (to be created)
-- **Scope**: Transform orchestrator from autonomous executor to intelligent proposal engine
-- **Key Changes**:
-  - Two-phase processing model (Analysis & Proposal → Human Review & Execution)
-  - Workflow-centric approach instead of individual actions
-  - Comprehensive contextual email generation
-  - Risk assessment and alternative suggestions
-  - Enhanced human dashboard for workflow visualization
+### System Architecture Status
+- **Orchestrator V3**: Still operational (autonomous execution)
+- **Orchestrator V4**: Ready for integration (proposal generation)
+- **Human Review Dashboard**: Needs connection to V4
+- **Workflow Executor**: Not yet built (next priority)
 
-## What Was Just Completed (Session 19 - UI Fixes & Architecture Planning)
+## Immediate Next Steps 🎯
 
-### UI Fixes Implemented ✅:
-1. **Customer Email Display**: Fixed to show actual email instead of company name
-2. **Contextual Email Responses**: Replaced placeholders with intelligent content generation
-3. **Confidence Score Calculation**: Fixed to use actual inventory match scores
-4. **Full Accessibility Support**: Added WCAG AA compliant features
-5. **Keyboard Navigation**: Complete tab support with focus indicators
-6. **Mobile Responsiveness**: Fixed navigation tabs and table layouts
-7. **Table Enhancements**: Added sorting and filtering to inventory matches
+### 1. Integration Phase (Priority: CRITICAL)
+```python
+# Connect V4 to Human Review Dashboard
+# Files to modify:
+- factory_automation/factory_ui/human_review_dashboard.py
+- factory_automation/factory_database/operations.py
 
-### Architecture Planning:
-1. **Comprehensive Proposal Document**: Created detailed plan for orchestrator transformation
-2. **Workflow-Centric Design**: Defined complete action chains for each email type
-3. **Enhanced Email Generation**: Designed multi-factor contextual response system
+# Tasks:
+1. Add proposal display in dashboard
+2. Create approval/rejection interface
+3. Wire up to V4 orchestrator
+4. Test end-to-end flow
+```
 
-## Last Updated: 2025-08-17 Evening
+### 2. Workflow Executor Service (Priority: HIGH)
+```python
+# Build executor for approved workflows
+# New files needed:
+- factory_automation/factory_agents/workflow_executor.py
+- factory_automation/factory_tests/test_workflow_executor.py
 
-## What Was Just Completed (Session 18 - Database Cleanup)
+# Core functionality:
+- Execute approved ProposedWorkflows
+- Handle each ProposedAction sequentially
+- Implement rollback on failure
+- Update status in real-time
+```
 
-### Database Cleanup:
-1. **PostgreSQL Reset**: Cleared all tables (customers, orders, recommendation_queue, etc.)
-2. **ChromaDB Reset**: Removed and recreated chroma_data directory
-3. **Ready for Fresh Start**: Both databases empty and ready for reingestion
+### 3. Database Migration (Priority: MEDIUM)
+```sql
+-- Add workflow tracking tables
+CREATE TABLE workflow_proposals (
+    id SERIAL PRIMARY KEY,
+    workflow_id VARCHAR(50) UNIQUE,
+    workflow_type VARCHAR(50),
+    confidence FLOAT,
+    status VARCHAR(20),
+    created_at TIMESTAMP,
+    approved_at TIMESTAMP,
+    approved_by VARCHAR(100),
+    proposal_data JSONB
+);
 
-### Code Management:
-1. **Git Reversion**: Reverted from commit 992fd21 back to origin/main (683e917)
-2. **Removed UI Changes**: Discarded attempted fixes that didn't work
-3. **Stable State**: Code synced with remote repository
+CREATE TABLE workflow_executions (
+    id SERIAL PRIMARY KEY,
+    workflow_id VARCHAR(50),
+    action_step INT,
+    action_type VARCHAR(50),
+    status VARCHAR(20),
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    result JSONB
+);
+```
 
-### MCP Configuration:
-1. **Playwright MCP**: Added browser automation server to ~/.claude.json
-2. **Ready for Testing**: Can now use Playwright for web automation
+## Code Snippets for Next Session
 
-### Issues Discovered:
-1. **Placeholder Email Text**: Dashboard shows hardcoded "Thank you for your order" instead of real email
-2. **Customer Email Field**: Shows company name instead of email address
-3. **Real Data Misidentified**: TBALWBL0009N is actual inventory, not placeholder
+### 1. Human Review Integration
+```python
+# In human_review_dashboard.py
+async def display_workflow_proposal(workflow_id: str):
+    """Display proposal in human review interface"""
+    orchestrator = get_orchestrator_v4()
+    proposal = orchestrator.get_proposal_by_id(workflow_id)
+    
+    if proposal:
+        # Display workflow details
+        st.header(f"Workflow: {proposal.workflow_id}")
+        st.metric("Confidence", f"{proposal.confidence:.2%}")
+        st.metric("Type", proposal.workflow_type.value)
+        
+        # Show proposed actions
+        for action in proposal.proposed_actions:
+            with st.expander(f"Step {action.step}: {action.action.value}"):
+                st.write(action.details)
+                st.write(f"Risk: {action.risk.value}")
+                
+        # Approval buttons
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Approve", key=f"approve_{workflow_id}"):
+                execute_workflow(proposal)
+        with col2:
+            if st.button("Reject", key=f"reject_{workflow_id}"):
+                reject_workflow(proposal)
+```
 
-## Current System State
+### 2. Workflow Executor Start
+```python
+# workflow_executor.py skeleton
+class WorkflowExecutor:
+    """Executes approved workflow proposals"""
+    
+    async def execute_workflow(self, proposal: ProposedWorkflow):
+        """Execute all actions in approved workflow"""
+        if proposal.approval_status != ApprovalStatus.APPROVED:
+            raise ValueError("Cannot execute unapproved workflow")
+        
+        execution_log = []
+        for action in proposal.proposed_actions:
+            try:
+                result = await self.execute_action(action)
+                execution_log.append({
+                    "step": action.step,
+                    "status": "success",
+                    "result": result
+                })
+            except Exception as e:
+                # Rollback previous actions
+                await self.rollback(execution_log)
+                raise
+        
+        return execution_log
+```
 
-### Application Status:
-- **Running**: http://localhost:7860
-- **Services Active**: Orchestrator, Human Manager, CLIP Model
-- **UI Status**: Accessibility compliant, confidence scores fixed
+## Key Files to Review
 
-### Database State:
-- **ChromaDB**: 569 items in tag_inventory_stella_smart (needs full reingestion)
-- **PostgreSQL**: Clean state (may have test data)
-- **Image Collections**: 291 full images + 3 sample images
+### Must Read First
+1. `orchestrator_v4_proposal.py` - Understand the new architecture
+2. `workflow_models.py` - Review data models
+3. `proposal_engine.py` - See how proposals are generated
+4. `test_proposal_orchestrator.py` - Understand test patterns
 
-### Git State:
-- **Branch**: main (synced with origin)
-- **Commit**: 683e917
-- **Status**: Clean, no uncommitted changes
+### Reference During Development
+1. `human_review_dashboard.py` - Current UI implementation
+2. `orchestrator_v3_agentic.py` - How execution currently works
+3. `order_processor_agent.py` - Order extraction logic
 
-## How to Test the System
+## Testing Strategy for Next Session
 
-### 1. Start the Application:
+### Integration Tests Needed
+```python
+# Test V4 → Dashboard → Executor flow
+async def test_full_proposal_to_execution():
+    # 1. Generate proposal
+    proposal = await orchestrator_v4.process_email(test_email)
+    
+    # 2. Display in dashboard
+    dashboard_response = await display_proposal(proposal)
+    
+    # 3. Approve proposal
+    orchestrator_v4.approve_proposal(proposal.workflow_id)
+    
+    # 4. Execute workflow
+    executor = WorkflowExecutor()
+    result = await executor.execute_workflow(proposal)
+    
+    # 5. Verify execution
+    assert all(r["status"] == "success" for r in result)
+```
+
+## Known Issues to Address
+
+### 1. Customer Email Field
+- Database stores company name instead of email
+- Need data migration script
+- Update order creation logic
+
+### 2. ChromaDB Data
+- Only 569/1184 items ingested
+- Need re-ingestion script
+- Verify all Excel sheets processed
+
+### 3. V3 Deprecation Path
+- Identify all V3 usage points
+- Create migration checklist
+- Plan phased rollout
+
+## Environment Setup Reminders
+
 ```bash
+# Activate environment
 source .venv/bin/activate
-python3 -m dotenv run -- python3 run_factory_automation.py
+
+# Test current system
+python3 run_factory_automation.py
+
+# Run new tests
+pytest factory_automation/factory_tests/test_proposal_orchestrator.py -v
+
+# Check for issues
+make check
+make format
 ```
 
-### 2. Test Human Review Dashboard:
-- Navigate to Human Review tab
-- Click on any queue item
-- Verify gradient cards are visible
-- Check inventory table shows Size and Quantity
+## Questions for Next Session
 
-### 3. Reingest Inventory Data (REQUIRED):
-```bash
-python3 -m factory_automation.factory_rag.excel_ingestion
-```
-- Should return 10 results with different sizes
+1. **UI Framework**: Should we keep Gradio or migrate to Streamlit for better proposal display?
+2. **Execution Strategy**: Sequential or parallel action execution?
+3. **Rollback Mechanism**: How to handle partial execution failures?
+4. **Notification System**: How to notify users of proposal status changes?
+5. **Audit Trail**: What level of execution logging is needed?
 
-### 4. Verify Data Completeness:
+## Success Criteria for Next Session
+
+- [ ] V4 orchestrator connected to human review dashboard
+- [ ] Proposals displayable and approvable in UI
+- [ ] Basic workflow executor implemented
+- [ ] At least one end-to-end test passing
+- [ ] Documentation updated with integration guide
+
+## Model Flow Clarification
+
+### How ExtractedOrder is Used
 ```python
-from factory_automation.factory_database.vector_db import ChromaDBClient
-client = ChromaDBClient()
-results = client.collection.get(where={'sheet': 'Sheet2'}, limit=300)
-print(f"Sheet2 items: {len(results['ids'])}")  # Should be 295
+# In V3 (orchestrator_v3_agentic.py):
+result = await self.order_processor.process_order_email(...)
+# result is OrderProcessingResult containing ExtractedOrder
+order = result.order  # This is ExtractedOrder
+customer_email = order.customer.email
+items = order.items
+
+# In V4 (proposal_engine.py):
+# ExtractedOrder is passed to proposal engine
+proposal = self.proposal_engine.generate_workflow_proposal(
+    email_data=email_data,
+    order_data=extracted_order,  # ExtractedOrder instance
+    inventory_matches=matches,
+    customer_data=customer_data
+)
 ```
 
-## Important Files to Remember
-
-### Modified Today:
-1. `factory_automation/factory_ui/human_review_dashboard.py` - UI with gradient cards and new table structure
-2. `CLAUDE.md` - Updated project memory
-3. `docs/SESSION_16_UI_AND_DATA_FIXES.md` - Today's session documentation
-
-### Created for Debugging:
-1. `debug_inventory_match.py` - Debug script for inventory issues
-2. `check_merged_cells.py` - Analyze Excel merged cells
-3. `ingest_merged_cells_data.py` - Ingestion script with merged cell handling
-
-### Critical Configuration Files:
-1. `config.yaml` - Application settings
-2. `.env` - API keys and secrets
-3. `inventory/*.xlsx` - Excel files with Sheet1 and Sheet2 data
-
-## Next Priorities
-
-### Immediate Tasks (Session 20):
-1. **Re-ingest Full Inventory Data**: Run ingestion to get all 1,184 items into ChromaDB
-2. **Fix Customer Email Field**: Implement data migration to extract actual emails from text
-3. **Begin Orchestrator Proposal System**: Create feature branch and start implementation
-
-### Architecture Implementation (Sessions 20-22):
-1. **Create Proposal Models**: Build workflow and action models
-2. **Refactor Orchestrator**: Transform to proposal generation engine
-3. **Update Dashboard**: Add workflow visualization components
-4. **Build Executor Service**: Queue-based execution system
-
-### Medium Priority:
-1. **Complete Batch Processing**: Finalize human review batch system
-2. **Document Generation**: Implement ReportLab integration
-3. **Excel Change Logs**: Create inventory modification tracking
-
-### Long Term:
-1. **Payment Tracking**: OCR for UTR/cheque processing
-2. **Production Deployment**: Docker containerization and monitoring
-3. **Gmail Live Integration**: Once IT provides domain delegation
-
-## Critical Code Patterns
-
-### Handling Merged Cells in Excel:
-```python
-# Always use forward-fill for merged cells
-df = pd.read_excel(file_path, sheet_name='Sheet2', header=0)
-df['TRIM NAME'] = df['TRIM NAME'].fillna(method='ffill')
-```
-
-### Inline Styles for Gradio (CSS limitations workaround):
-```python
-style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;"
-```
-
-### Accessing Metadata from ChromaDB:
-```python
-match.get("size", match.get('metadata', {}).get('size', "N/A"))
-match.get("quantity", match.get('metadata', {}).get('QTY', "N/A"))
-```
-
-## Environment Variables Needed
-
-```bash
-# Required
-OPENAI_API_KEY=your_key_here
-DATABASE_URL=postgresql://postgres:postgres@localhost/factory_automation
-
-# Optional but recommended
-TOGETHER_API_KEY=your_key_here
-PYTHONPATH=/Users/samarsingh/Factory_flow_Automation
-```
-
-## Common Issues and Solutions
-
-### Issue: Gradient cards not showing
-**Solution**: Use inline styles instead of CSS classes
-
-### Issue: Missing inventory data
-**Solution**: Check if Sheet2 exists and use merged cell handling
-
-### Issue: Port already in use
-**Solution**: Kill existing process or use different port
-```bash
-lsof -i :7860 | grep LISTEN | awk '{print $2}' | xargs kill -9
-```
-
-## Testing Checklist for Next Session
-
-- [ ] All Excel files have Sheet2 ingested
-- [ ] Gradient cards visible in all browsers
-- [ ] Size/Quantity data accurate for all items
-- [ ] Search returns complete results
-- [ ] Human Review queue processes correctly
-- [ ] Images load and zoom properly
-- [ ] No console errors in browser
+### Complete Data Flow
+1. **Email arrives** → Raw email data
+2. **OrderProcessorAgent** → Creates ExtractedOrder from email
+3. **ProposalEngine** → Uses ExtractedOrder to generate ProposedWorkflow
+4. **Human Review** → Reviews ProposedWorkflow
+5. **WorkflowExecutor** → Executes approved ProposedWorkflow
+6. **Database** → Updates with execution results
 
 ## Notes for Next Developer
 
-1. **Merged Cells Are Common**: Many Excel files use merged cells for grouping items
-2. **Gradio CSS Limitations**: Use inline styles for critical styling
-3. **ChromaDB Collections**: Different embedding dimensions (1024 for Stella, 384 for MiniLM)
-4. **Database Schema**: recommendation_queue uses queue_id not id
-5. **Image Storage**: Base64 encoded in ChromaDB metadata
+The proposal system is fully functional but not yet integrated with the UI. The architecture cleanly separates proposal generation from execution, which is a major improvement over V3. Focus on building the bridge between proposals and the existing human review dashboard. The workflow executor should be kept simple initially - execute actions sequentially and fail fast on errors. Rollback logic can be added later.
 
-## Session End Status
+The key insight from this session: ExtractedOrder is a business domain model (what the customer wants), while ProposedWorkflow is an orchestration model (how we plan to fulfill it). This separation allows for flexible workflow generation based on business rules, customer tier, inventory availability, and risk assessment.
 
-- Application running and stable
-- All changes committed to git
-- Documentation updated
-- No critical errors pending
-- Ready for next session
+---
+*Prepared by: Claude (Session 20)*  
+*For: Next development session*
