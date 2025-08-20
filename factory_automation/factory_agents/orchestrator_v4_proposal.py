@@ -205,7 +205,12 @@ enough for humans to understand and approve/modify before execution."""
                         try:
                             # Generate embedding for search
                             search_query = item.tag_specification.description or "tag"
-                            query_embedding = self.embeddings_manager.encode_queries([search_query])[0]
+                            query_embeddings = self.embeddings_manager.encode_queries([search_query])
+                            # Convert to list if it's a numpy array
+                            if hasattr(query_embeddings, 'tolist'):
+                                query_embedding = query_embeddings[0].tolist()
+                            else:
+                                query_embedding = query_embeddings[0]
                             
                             results = self.chromadb_client.search(
                                 query=search_query,
@@ -280,7 +285,12 @@ enough for humans to understand and approve/modify before execution."""
             """Search inventory for proposal generation"""
             try:
                 # Generate embedding for the query using Stella
-                query_embedding = self.embeddings_manager.encode_queries([query])[0]
+                query_embeddings = self.embeddings_manager.encode_queries([query])
+                # Convert to list if it's a numpy array
+                if hasattr(query_embeddings, 'tolist'):
+                    query_embedding = query_embeddings[0].tolist()
+                else:
+                    query_embedding = query_embeddings[0]
                 
                 # Search with pre-computed embedding
                 results = self.chromadb_client.search(
