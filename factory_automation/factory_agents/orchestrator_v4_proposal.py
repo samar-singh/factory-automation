@@ -12,6 +12,7 @@ from agents import Agent, Runner, function_tool, trace
 from ..factory_config.settings import settings
 from ..factory_utils.trace_monitor import trace_monitor
 from ..factory_database.vector_db import ChromaDBClient
+from ..factory_rag.embeddings_config import EmbeddingsManager
 from ..factory_models import (
     ExtractedOrder,
     CustomerInfo,
@@ -37,6 +38,9 @@ class ProposalOrchestratorV4:
         self.chromadb_client = chromadb_client
         self.runner = Runner()
         self.is_monitoring = False
+        
+        # Initialize embeddings manager for Stella embeddings
+        self.embeddings_manager = EmbeddingsManager(model_name="stella-400m")
         
         # Initialize proposal engine
         self.proposal_engine = ProposalEngine()
@@ -199,8 +203,13 @@ enough for humans to understand and approve/modify before execution."""
                 if order_data and order_data.items:
                     for item in order_data.items[:3]:  # Limit searches
                         try:
+                            # Generate embedding for search
+                            search_query = item.tag_specification.description or "tag"
+                            query_embedding = self.embeddings_manager.encode_queries([search_query])[0]
+                            
                             results = self.chromadb_client.search(
-                                query=item.tag_specification.description or "tag",
+                                query=search_query,
+                                query_embedding=query_embedding,
                                 n_results=5
                             )
                             if results and results.get("documents"):
@@ -270,8 +279,13 @@ enough for humans to understand and approve/modify before execution."""
         ) -> Dict[str, Any]:
             """Search inventory for proposal generation"""
             try:
+                # Generate embedding for the query using Stella
+                query_embedding = self.embeddings_manager.encode_queries([query])[0]
+                
+                # Search with pre-computed embedding
                 results = self.chromadb_client.search(
                     query=query,
+                    query_embedding=query_embedding,
                     n_results=limit
                 )
                 
