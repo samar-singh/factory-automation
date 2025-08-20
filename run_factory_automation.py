@@ -132,8 +132,14 @@ def start_web_interface():
     from factory_automation.factory_ui.human_review_dashboard import (
         HumanReviewDashboard,
     )
+    from factory_automation.factory_ui.proposal_review_dashboard import (
+        ProposalReviewDashboard,
+    )
     from factory_automation.factory_ui.image_display_helper import (
         create_image_gallery_html,
+    )
+    from factory_automation.factory_agents.orchestrator_v4_proposal import (
+        ProposalOrchestratorV4,
     )
 
     print("🌐 Starting web interface...")
@@ -149,10 +155,19 @@ def start_web_interface():
     orchestrator = SHARED_ORCHESTRATOR
     human_manager = orchestrator.human_manager
 
+    # Create V4 proposal orchestrator
+    orchestrator_v4 = ProposalOrchestratorV4(
+        chromadb_client=orchestrator.chromadb_client,
+        use_mock_gmail=False
+    )
+    
     # Create review interface
     review_interface = HumanReviewDashboard(
         interaction_manager=human_manager, chromadb_client=orchestrator.chromadb_client
     )
+    
+    # Create proposal review dashboard
+    proposal_dashboard = ProposalReviewDashboard(orchestrator_v4=orchestrator_v4)
 
     # Create combined interface
     with gr.Blocks(title="Factory Automation", theme=gr.themes.Soft()) as app:
@@ -196,11 +211,17 @@ We need 1000 price tags for Allen Solly...
                         gr.Markdown(
                             "*Customer email will be extracted automatically from the 'From:' field. Documents will be processed for additional order details.*"
                         )
-                        process_btn = gr.Button(
-                            "📧 Process Order with Documents",
-                            variant="primary",
-                            size="lg",
-                        )
+                        with gr.Row():
+                            process_btn = gr.Button(
+                                "📧 Process Order (V3)",
+                                variant="primary",
+                                size="lg",
+                            )
+                            generate_proposal_btn = gr.Button(
+                                "📋 Generate Proposal (V4)",
+                                variant="secondary",
+                                size="lg",
+                            )
 
                     with gr.Column():
                         processing_result = gr.JSON(label="Processing Result")
@@ -686,9 +707,93 @@ We need 1000 price tags for Allen Solly...
 
                     return result, extracted, doc_analysis, image_summary, image_gallery
 
+                async def generate_proposal_v4(email_body, files):
+                    """Generate a proposal using V4 orchestrator"""
+                    import re
+                    
+                    # Extract email components
+                    from_pattern = r"[Ff]rom:\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})"
+                    subject_pattern = r"[Ss]ubject:\s*(.+?)(?:\n|$)"
+                    
+                    from_match = re.search(from_pattern, email_body)
+                    customer_email = from_match.group(1) if from_match else "unknown@example.com"
+                    
+                    subject_match = re.search(subject_pattern, email_body)
+                    subject = subject_match.group(1) if subject_match else "Order Request"
+                    
+                    # Clean body
+                    clean_body = re.sub(r"^[Ff]rom:.*?\n", "", email_body, flags=re.MULTILINE)
+                    clean_body = re.sub(r"^[Ss]ubject:.*?\n", "", clean_body, flags=re.MULTILINE)
+                    clean_body = re.sub(r"^[Dd]ate:.*?\n", "", clean_body, flags=re.MULTILINE)
+                    
+                    # Prepare email data
+                    email_data = {
+                        "from": customer_email,
+                        "subject": subject,
+                        "body": clean_body.strip(),
+                        "attachments": [f.name for f in files] if files else []
+                    }
+                    
+                    try:
+                        # Generate proposal
+                        proposal = await orchestrator_v4.process_email(email_data)
+                        
+                        if proposal:
+                            result = {
+                                "success": True,
+                                "workflow_id": proposal.workflow_id,
+                                "type": proposal.workflow_type.value,
+                                "confidence": proposal.confidence,
+                                "reasoning": proposal.reasoning,
+                                "actions_count": len(proposal.proposed_actions),
+                                "message": f"✅ Proposal {proposal.workflow_id} generated successfully!"
+                            }
+                            
+                            # Prepare extracted info
+                            info = f"📋 Proposal Generated\n"
+                            info += f"ID: {proposal.workflow_id}\n"
+                            info += f"Type: {proposal.workflow_type.value}\n"
+                            info += f"Confidence: {proposal.confidence:.1%}\n"
+                            info += f"Actions: {len(proposal.proposed_actions)} steps\n\n"
+                            info += f"Reasoning: {proposal.reasoning}"
+                            
+                            # Document analysis placeholder
+                            doc_info = "📎 Documents will be analyzed during execution"
+                            
+                            # Image summary
+                            image_info = "📸 Visual matching available after approval"
+                            
+                            return result, info, doc_info, image_info, []
+                        else:
+                            return {
+                                "success": False,
+                                "error": "Failed to generate proposal"
+                            }, "❌ Proposal generation failed", "", "", []
+                            
+                    except Exception as e:
+                        logger.error(f"Error generating proposal: {e}")
+                        return {
+                            "success": False,
+                            "error": str(e)
+                        }, f"❌ Error: {str(e)}", "", "", []
+
                 process_btn.click(
                     fn=lambda body, files: asyncio.run(
                         process_order_with_documents(body, files)
+                    ),
+                    inputs=[email_input, attached_files],
+                    outputs=[
+                        processing_result,
+                        extracted_info,
+                        document_analysis,
+                        image_match_summary,
+                        image_matches_display,
+                    ],
+                )
+                
+                generate_proposal_btn.click(
+                    fn=lambda body, files: asyncio.run(
+                        generate_proposal_v4(body, files)
                     ),
                     inputs=[email_input, attached_files],
                     outputs=[
@@ -703,6 +808,10 @@ We need 1000 price tags for Allen Solly...
             # Human Review Tab
             with gr.TabItem("👤 Human Review"):
                 review_interface.create_interface()
+
+            # Proposal Review Tab (V4 Orchestrator)
+            with gr.TabItem("📋 Proposal Review"):
+                proposal_interface = proposal_dashboard.create_interface()
 
             # Inventory Search Tab
             with gr.TabItem("🔍 Inventory Search"):
