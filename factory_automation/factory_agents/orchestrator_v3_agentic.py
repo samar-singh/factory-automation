@@ -1,31 +1,47 @@
-"""True Agentic Orchestrator - Autonomous AI with tool usage"""
+"""True Agentic Orchestrator - Autonomous AI with tool usage (Refactored with shared tools)"""
 
 import asyncio
 import json
 import logging
+import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from agents import Agent, Runner, function_tool, trace
+# Removed SDK imports - using direct OpenAI API for true approval capability
+# from agents import Agent, Runner, trace  # SDK executes immediately - can't intercept
+from openai import AsyncOpenAI
 
 from ..factory_config.settings import settings
+from ..factory_database.connection import get_db
+from ..factory_database.models import ActionAudit
 from ..factory_database.vector_db import ChromaDBClient
 from ..factory_utils.trace_monitor import trace_monitor
+from .action_classifier import ActionClassifier, ActionType
 from .image_processor_agent import ImageProcessorAgent
 from .mock_gmail_agent import MockGmailAgent
 from .order_processor_agent import OrderProcessorAgent
+from .tools.tool_factory import ToolFactory
+from .two_tier_executor import TwoTierExecutor
+
+# Import select functions from proposal_engine for reasoning generation
+from .proposal_engine import ProposalEngine
+
+# Import validation system for enforcing tool order
+from .validation_agent import ValidationAgent
+from .validation_rules import VALIDATION_RULES
 
 logger = logging.getLogger(__name__)
 
 
 class AgenticOrchestratorV3:
-    """Fully autonomous orchestrator using OpenAI Agents SDK with callable tools"""
+    """Fully autonomous orchestrator using OpenAI Agents SDK with shared tools"""
 
     def __init__(self, chromadb_client: ChromaDBClient, use_mock_gmail: bool = True):
-        """Initialize with ChromaDB and create autonomous agent"""
+        """Initialize with ChromaDB and create autonomous orchestrator with true approval capability"""
         self.chromadb_client = chromadb_client
-        self.runner = Runner()
+        # Removed Runner - using direct API for true interception
         self.is_monitoring = False
+        self.approval_mode = True  # Now actually works with direct API approach
 
         # Load business email configuration
         self.business_emails = settings.config.get("business_emails", {})
@@ -73,1473 +89,702 @@ class AgenticOrchestratorV3:
         self.order_processor = OrderProcessorAgent(chromadb_client)
         self.image_processor = ImageProcessorAgent(chromadb_client)
 
-        # Initialize OpenAI client for classification
-        from openai import AsyncOpenAI
-
+        # Initialize OpenAI client for both classification AND execution (replacing SDK)
         self.openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
 
         # Tool call tracking
         self.tool_call_history = []
+        
+        # Phase 3: Action tracking and workflow management
+        self.action_classifier = ActionClassifier()
+        self.proposal_engine = ProposalEngine()  # For reasoning generation
+        self.current_workflow_id = None
+        self.workflow_actions = []  # Track actions for current workflow
+        
+        # Phase 4: Two-tier execution system
+        self.two_tier_executor = TwoTierExecutor(self.action_classifier)
+        self.pending_actions = []  # Track pending irreversible actions
+        self.auto_executed_actions = []  # Track auto-executed reversible actions
+        
+        # Initialize validation agent for tool call validation
+        self.validator = ValidationAgent(VALIDATION_RULES)
+        self.validator.set_strict_mode(True)  # Enable strict validation
+        logger.info("Initialized ValidationAgent for tool call validation")
 
-        # Create all tools that the agent can autonomously use
-        self.tools = self._create_tools()
-
-        # Create the autonomous agent
-        self.agent = Agent(
-            name="FactoryAutomationOrchestrator",
-            instructions=self._get_agent_instructions(),
-            tools=self.tools,
-            model="gpt-4o",  # Default model
+        # Create tool factory with all dependencies
+        self.tool_factory = ToolFactory(
+            mode="execute",  # V3 executes actions
+            chromadb_client=chromadb_client,
+            gmail_agent=self.gmail_agent,
+            openai_client=self.openai_client,
+            order_processor=self.order_processor,
+            image_processor=self.image_processor,
+            email_configs=self.email_configs,
+            pattern_config=self.pattern_config,
         )
 
-        logger.info(f"Initialized Agentic Orchestrator V3 with {len(self.tools)} tools")
+        # Get all tools for V3
+        self.tools = self.tool_factory.get_tools_for_v3()
+        
+        # Build tool map and schemas for direct API usage
+        self.tool_map = {}
+        self.tool_schemas = []
+        for tool in self.tools:
+            # Map tool names to functions for execution
+            self.tool_map[tool.name] = tool.function if hasattr(tool, 'function') else tool
+            
+            # Build OpenAI-compatible tool schema
+            # Check for params_json_schema (wrapped tools) or parameters (original tools)
+            params = getattr(tool, 'params_json_schema', None) or getattr(tool, 'parameters', None)
+            if not params:
+                params = {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            
+            tool_schema = {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": getattr(tool, 'description', ''),
+                    "parameters": params
+                }
+            }
+            self.tool_schemas.append(tool_schema)
+        
+        # Store instructions for use in API calls
+        self.agent_instructions = self._get_agent_instructions()
+        self.model = "gpt-4o"  # Model to use
+        
+        logger.info(f"Initialized Agentic Orchestrator V3 with {len(self.tools)} shared tools")
+        logger.info("Using direct OpenAI API for true approval capability (can intercept before execution)")
 
+    async def confirm_and_execute(self, tool_name: str, tool_args: Dict[str, Any]) -> Any:
+        """
+        Execute a wrapped tool - the wrapper handles approval and execution.
+        The wrapped tools already handle classification internally.
+        """
+        tool = self.tool_map.get(tool_name)
+        if not tool:
+            return json.dumps({"error": f"Tool {tool_name} not found"})
+        
+        logger.info(f"🔔 Agent wants to call tool: {tool_name} with args: {tool_args}")
+        
+        # Call the wrapped tool - it handles approval logic internally
+        try:
+            result = await tool(**tool_args)
+        except Exception as e:
+            logger.error(f"Error executing tool {tool_name}: {e}")
+            result = json.dumps({"status": "error", "error": str(e)})
+        
+        # Parse result to check if approval is needed
+        try:
+            if isinstance(result, str):
+                result_dict = json.loads(result)
+                if result_dict.get("status") == "pending_approval":
+                    # Tool requires approval - track it
+                    action_id = self._generate_action_id()
+                    
+                    # Store pending action with tool reference
+                    pending_action = {
+                        "action_id": action_id,
+                        "action_name": tool_name,
+                        "parameters": tool_args,
+                        "tool": tool,  # Store wrapped tool reference for later execution
+                        "status": "pending_approval",
+                        "type": "irreversible",
+                        "queued_at": datetime.now().isoformat()
+                    }
+                    self.pending_actions.append(pending_action)
+                    
+                    # Track in database (not executed)
+                    await self._track_action(
+                        action_name=tool_name,
+                        action_category="tool_call",
+                        details=tool_args,
+                        confidence=0.85,
+                        executed=False
+                    )
+                    
+                    logger.warning(f"🟠 Action {tool_name} queued for approval (ID: {action_id})")
+                    
+                    # Return with action_id for UI tracking
+                    result_dict["action_id"] = action_id
+                    return json.dumps(result_dict)
+                    
+                elif result_dict.get("status") == "error":
+                    logger.error(f"Tool {tool_name} returned error: {result_dict.get('error')}")
+                else:
+                    # Tool executed successfully
+                    logger.info(f"✅ Tool {tool_name} executed successfully")
+                    
+                    # Track successful execution
+                    await self._track_action(
+                        action_name=tool_name,
+                        action_category="tool_call",
+                        details=tool_args,
+                        confidence=0.85,
+                        executed=True
+                    )
+                    
+                    # Add to auto-executed list
+                    self.auto_executed_actions.append({
+                        "action_name": tool_name,
+                        "parameters": tool_args,
+                        "status": "executed",
+                        "type": "reversible"
+                    })
+        except json.JSONDecodeError:
+            # Result is not JSON, assume success
+            logger.info(f"Tool {tool_name} returned non-JSON result")
+            
+            # Track execution
+            await self._track_action(
+                action_name=tool_name,
+                action_category="tool_call",
+                details=tool_args,
+                confidence=0.85,
+                executed=True
+            )
+        
+        return result
+    
     def _get_agent_instructions(self) -> str:
         """Get comprehensive instructions for the autonomous agent"""
         return """You are an autonomous factory automation orchestrator for a garment price tag manufacturing facility.
 
-CRITICAL WORKFLOW - You MUST follow this sequence for EVERY email:
-1. FIRST: Use classify_email_intent to determine the email type
-2. THEN: Based on the classification, take appropriate action
-
-Your primary responsibilities:
-1. Classify and route all incoming emails appropriately
-2. Process customer orders with full automation
-3. Handle payment confirmations and update order status
-4. Respond to inquiries with relevant information
-5. Manage supplier communications
-6. Generate and send appropriate responses
-
-Available tools and when to use them:
-- classify_email_intent: ALWAYS use this FIRST to determine email type
-- check_emails: Poll for new emails
-- process_complete_order: For NEW ORDER emails only
-- track_payment: For PAYMENT confirmation emails
-- search_inventory: For INQUIRY emails about product availability
-- search_visual: For emails with product images
-- get_customer_context: To retrieve customer history before responding
-- generate_document: Create quotations, confirmations, or responses
-- send_email_response: Send automated responses to customers/suppliers
-- handle_supplier_inquiry: For SUPPLIER communications
-- update_order_status: Update order in database
-
-Email Classification Types and Required Actions:
-1. NEW_ORDER → process_complete_order → generate_document (quote) → send_email_response
-2. PAYMENT → track_payment → update_order_status → send_email_response (confirmation)
-3. INQUIRY → get_customer_context → search_inventory → send_email_response (information)
-4. SUPPLIER → handle_supplier_inquiry → forward to procurement → send_email_response
-5. FOLLOWUP → get_customer_context → check order status → send_email_response (update)
-6. COMPLAINT → extract issue → create ticket → send_email_response (acknowledgment)
-
-Decision thresholds:
-- Auto-approve and respond: >80% confidence
-- Request clarification: 60-80% confidence
-- Escalate to human: <60% confidence or sensitive issues
-
-IMPORTANT: You must ALWAYS send a response email after processing, appropriate to the email type and outcome.
-
-Think step by step and ensure complete execution from email receipt to customer response."""
-
-    def _create_tools(self) -> List:
-        """Create all callable tools for the agent"""
-        tools = []
-
-        # Email monitoring tool
-        @function_tool(
-            name_override="check_emails",
-            description_override="Check for new emails in the inbox",
-        )
-        async def check_emails() -> List[Dict[str, Any]]:
-            """Poll for new emails"""
-            if not self.gmail_agent:
-                logger.debug("Gmail agent disabled - no emails to check")
-                return []
-
-            try:
-                messages = (
-                    self.gmail_agent.users()
-                    .messages()
-                    .list(userId="me", q="is:unread", maxResults=5)
-                    .execute()
-                )
-
-                emails = []
-                for msg in messages.get("messages", []):
-                    email_data = self.gmail_agent.process_order_email(msg["id"])
-                    if email_data:
-                        emails.append(email_data)
-
-                return emails
-            except Exception as e:
-                logger.error(f"Error checking emails: {e}")
-                return []
-
-        tools.append(check_emails)
-
-        # Email classification tool - MUST be used first for every email
-        @function_tool(
-            name_override="classify_email_intent",
-            description_override="Intelligently classify email intent using business context, patterns, and AI. ALWAYS use this FIRST before any other processing.",
-        )
-        async def classify_email_intent(
-            email_subject: str,
-            email_body: str,
-            sender_email: str,
-            recipient_email: Optional[str] = None,
-        ) -> str:
-            """Classify email using business context, patterns, and GPT-4o"""
-            import json
-
-            from ..factory_database.connection import get_db
-            from ..factory_database.models import EmailPattern
-
-            # Normalize recipient email
-            if recipient_email:
-                recipient_email = recipient_email.lower()
-            else:
-                recipient_email = (
-                    self.primary_emails[0]
-                    if self.primary_emails
-                    else "orders@factory.com"
-                )
-
-            # Get the business context for this email
-            email_config = self.email_configs.get(recipient_email, {})
-            email_description = email_config.get(
-                "description", "General business email"
-            )
-            likely_intents = email_config.get("likely_intents", [])
-            confidence_boost = email_config.get("confidence_boost", 0.0)
-
-            # Step 1: Check sender pattern in PostgreSQL
-            if self.pattern_config.get("enabled", True):
-                try:
-                    with get_db() as db:
-                        pattern = (
-                            db.query(EmailPattern)
-                            .filter(
-                                EmailPattern.sender_email == sender_email,
-                                EmailPattern.recipient_email == recipient_email,
-                            )
-                            .order_by(EmailPattern.count.desc())
-                            .first()
-                        )
-
-                        min_count = self.pattern_config.get("min_count_for_pattern", 3)
-
-                        if pattern and pattern.count >= min_count:
-                            # Calculate confidence
-                            base_confidence = self.pattern_config.get(
-                                "initial_confidence", 0.6
-                            )
-                            increment = self.pattern_config.get(
-                                "confidence_increment", 0.05
-                            )
-                            max_conf = self.pattern_config.get("max_confidence", 0.95)
-
-                            confidence = min(
-                                max_conf, base_confidence + (pattern.count * increment)
-                            )
-
-                            # Apply boost if this intent is likely for this email
-                            if pattern.intent_type in likely_intents:
-                                confidence = min(
-                                    max_conf, confidence + confidence_boost
-                                )
-
-                            if confidence > 0.85:
-                                logger.info(
-                                    f"Using learned pattern for {sender_email}→{recipient_email}: {pattern.intent_type}"
-                                )
-                                return json.dumps(
-                                    {
-                                        "classification": pattern.intent_type,
-                                        "confidence": confidence,
-                                        "method": "learned_pattern",
-                                        "pattern_count": pattern.count,
-                                        "recipient_email": recipient_email,
-                                        "recipient_description": email_description,
-                                        "suggested_tools": self._get_tools_for_intent(
-                                            pattern.intent_type
-                                        ),
-                                    }
-                                )
-                except Exception as e:
-                    logger.warning(f"Error checking patterns: {e}")
-
-            # Step 2: Use GPT-4o with full business context
-            try:
-                # Build context-rich prompt
-                response = await self.openai_client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": f"""You are classifying emails for a garment tag manufacturing factory.
-                            
-                            CRITICAL CONTEXT - This email was sent to: {recipient_email}
-                            
-                            PURPOSE OF THIS EMAIL ADDRESS:
-                            {email_description}
-                            
-                            EXPECTED EMAIL TYPES for {recipient_email}:
-                            {', '.join(likely_intents) if likely_intents else 'Various business communications'}
-                            
-                            ALL POSSIBLE CLASSIFICATIONS:
-                            - NEW_ORDER: Customer placing an order for tags/labels
-                            - ORDER_MODIFICATION: Changes to existing order
-                            - URGENT_ORDER: Rush/priority order requests
-                            - PAYMENT: Payment confirmations, UTR numbers
-                            - PAYMENT_INQUIRY: Questions about payment status
-                            - INQUIRY: General questions about products/services
-                            - QUOTATION_REQUEST: Request for price quotes
-                            - NEW_CUSTOMER: New customer onboarding
-                            - FOLLOWUP: Status check on existing order
-                            - SUPPLIER: Vendor/supplier communications
-                            - MATERIAL_QUOTATION: Raw material pricing from suppliers
-                            - DELIVERY_UPDATE: Shipping/delivery information
-                            - COMPLAINT: Issues with products/service
-                            - QUALITY_ISSUE: Specific quality problems
-                            - INVOICE_REQUEST: Request for invoice/billing documents
-                            
-                            Consider the email address purpose when classifying. For example:
-                            - If sent to orders@: likely NEW_ORDER unless clearly otherwise
-                            - If sent to sales@: likely INQUIRY or QUOTATION_REQUEST
-                            - If sent to info@: could be various types
-                            
-                            Return JSON with:
-                            - classification: The most appropriate intent type
-                            - confidence: 0.0 to 1.0 (consider email address context)
-                            - reasoning: Why you chose this classification
-                            - key_indicators: Specific words/phrases that guided your decision
-                            - alternative_classification: Second most likely intent (if any)
-                            - extracted_entities: Order numbers, UTRs, quantities, etc.
-                            """,
-                        },
-                        {
-                            "role": "user",
-                            "content": f"""
-                            Email Details:
-                            To: {recipient_email} ({email_description[:100]})
-                            From: {sender_email}
-                            Subject: {email_subject}
-                            Body: {email_body[:1000]}
-                            
-                            Classify this email considering it was sent to an address meant for: {email_description}
-                            """,
-                        },
-                    ],
-                    response_format={"type": "json_object"},
-                    temperature=0.1,
-                )
-
-                result = json.loads(response.choices[0].message.content)
-
-                # Apply confidence boost if classification matches expected intent
-                if result["classification"] in likely_intents:
-                    original_confidence = result["confidence"]
-                    result["confidence"] = min(
-                        0.99, result["confidence"] + confidence_boost
-                    )
-                    result["confidence_boosted"] = True
-                    result["boost_reason"] = (
-                        f"Matches expected intent for {recipient_email}"
-                    )
-                    logger.info(
-                        f"Boosted confidence from {original_confidence:.2f} to {result['confidence']:.2f}"
-                    )
-
-                # Store pattern for learning with description
-                if self.pattern_config.get("enabled", True):
-                    await self._update_sender_pattern(
-                        sender_email,
-                        recipient_email,
-                        email_description,
-                        result["classification"],
-                        email_subject,
-                    )
-
-                result["method"] = "ai_analysis_with_context"
-                result["recipient_email"] = recipient_email
-                result["recipient_description"] = email_description
-                result["suggested_tools"] = self._get_tools_for_intent(
-                    result["classification"]
-                )
-
-                return json.dumps(result)
-
-            except Exception as e:
-                logger.error(f"AI classification failed: {e}")
-                # Context-aware fallback
-                default_intent = likely_intents[0] if likely_intents else "NEW_ORDER"
-                return json.dumps(
-                    {
-                        "classification": default_intent,
-                        "confidence": 0.4,
-                        "error": str(e),
-                        "method": "context_aware_fallback",
-                        "recipient_email": recipient_email,
-                        "recipient_description": email_description,
-                        "fallback_reason": f"Using most likely intent for {recipient_email}",
-                        "suggested_tools": self._get_tools_for_intent(default_intent),
-                    }
-                )
-
-        tools.append(classify_email_intent)
-
-        # REMOVED analyze_email - functionality now in process_complete_order
-
-        # Order extraction - kept as internal function, not a tool
-        # Use process_complete_order instead for full workflow
-        async def _extract_order_items_internal(
-            email_body: str, has_attachments: bool = False
-        ) -> str:
-            """Internal function to extract order items using OpenAI GPT-4"""
-            import re
-
-            from openai import AsyncOpenAI
-
-            # Initialize OpenAI client
-            client = AsyncOpenAI(api_key=settings.openai_api_key)
-
-            # Prepare the prompt for GPT-4
-            extraction_prompt = f"""
-            You are an expert at extracting order information from emails for a garment price tag manufacturing factory.
-            
-            Analyze the following email and extract ALL order items with their specifications.
-            
-            Email Content:
-            {email_body}
-            
-            Extract the following information for EACH item ordered:
-            1. Item type (e.g., price tags, hang tags, care labels, barcode stickers, etc.)
-            2. Quantity (number of pieces/units)
-            3. Brand/Customer name
-            4. Color specifications if mentioned
-            5. Size specifications (dimensions if provided)
-            6. Material type if mentioned (paper, plastic, fabric, etc.)
-            7. Special requirements (printing, embossing, special finishes)
-            8. Any product codes or SKUs mentioned
-            9. Delivery timeline if mentioned
-            
-            IMPORTANT:
-            - Extract ALL items mentioned, even if details are incomplete
-            - If quantity is mentioned as "tags for X items", calculate the actual tag quantity
-            - Look for both explicit orders and implied requirements
-            - Note any references to attachments that might contain additional details
-            
-            Return the extracted information as a JSON object with this structure:
-            {{
-                "customer_name": "extracted customer/brand name",
-                "order_items": [
-                    {{
-                        "item_type": "type of tag/label",
-                        "quantity": number,
-                        "brand": "brand name if different from customer",
-                        "color": "color if specified",
-                        "size": "dimensions if specified",
-                        "material": "material type",
-                        "special_requirements": ["list of special requirements"],
-                        "product_code": "code if mentioned",
-                        "description": "full description combining all details"
-                    }}
-                ],
-                "delivery_timeline": "urgency or deadline if mentioned",
-                "additional_notes": "any other important information",
-                "confidence_level": "high/medium/low based on clarity of requirements",
-                "missing_information": ["list of important missing details"]
-            }}
-            
-            If no clear order items can be extracted, return an appropriate message explaining what information is needed.
-            """
-
-            try:
-                # Call GPT-4 for intelligent extraction
-                response = await client.chat.completions.create(
-                    model="gpt-4-turbo-preview",
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "You are an expert at extracting structured order information from unstructured text. Always return valid JSON.",
-                        },
-                        {"role": "user", "content": extraction_prompt},
-                    ],
-                    response_format={"type": "json_object"},
-                    temperature=0.1,  # Low temperature for consistent extraction
-                    max_tokens=2000,
-                )
-
-                # Parse the AI response
-                extracted_data = json.loads(response.choices[0].message.content)
-
-                # Add metadata
-                extracted_data["extraction_method"] = "ai_gpt4"
-                extracted_data["has_attachments"] = has_attachments
-                extracted_data["extraction_timestamp"] = datetime.now().isoformat()
-
-                # Enhance with basic pattern matching as fallback
-                if (
-                    not extracted_data.get("order_items")
-                    or len(extracted_data["order_items"]) == 0
-                ):
-                    # Fallback to basic pattern matching
-                    items = []
-                    quantity_patterns = [
-                        r"(\d+)\s*(pcs|pieces|units|nos|tags)",
-                        r"quantity[:\s]+(\d+)",
-                        r"(\d+)\s+(?:black|blue|green|red|white)\s+tags",
-                    ]
-
-                    for pattern in quantity_patterns:
-                        matches = re.findall(pattern, email_body.lower())
-                        for match in matches:
-                            if isinstance(match, tuple):
-                                qty = match[0]
-                            else:
-                                qty = match
-
-                            items.append(
-                                {
-                                    "quantity": int(qty),
-                                    "description": f"Extracted quantity: {qty}",
-                                    "item_type": "price_tag",  # Default assumption
-                                    "extraction_method": "pattern_matching",
-                                }
-                            )
-
-                    if items:
-                        extracted_data["order_items"] = items
-                        extracted_data["confidence_level"] = "low"
-                        extracted_data["extraction_method"] = "hybrid_ai_pattern"
-
-                # Log successful extraction
-                logger.info(
-                    f"AI extracted {len(extracted_data.get('order_items', []))} items from email"
-                )
-
-                return json.dumps(extracted_data, indent=2)
-
-            except Exception as e:
-                logger.error(
-                    f"AI extraction failed: {str(e)}, falling back to basic extraction"
-                )
-
-                # Fallback to basic extraction
-                items = []
-                import re
-
-                # Basic pattern matching
-                quantity_patterns = [
-                    r"(\d+)\s*(pcs|pieces|units|nos|tags)",
-                    r"quantity[:\s]+(\d+)",
-                ]
-
-                for pattern in quantity_patterns:
-                    matches = re.findall(pattern, email_body.lower())
-                    for match in matches:
-                        if isinstance(match, tuple):
-                            qty = match[0]
-                            unit = match[1] if len(match) > 1 else "units"
-                        else:
-                            qty = match
-                            unit = "units"
-
-                        items.append(
-                            {
-                                "quantity": int(qty),
-                                "unit": unit,
-                                "description": f"{qty} {unit} extracted via pattern matching",
-                                "item_type": "unknown",
-                                "extraction_method": "fallback_pattern",
-                            }
-                        )
-
-                return json.dumps(
-                    {
-                        "items": items,
-                        "extraction_method": "fallback",
-                        "error": str(e),
-                        "total_items": len(items),
-                        "requires_clarification": True,
-                        "confidence_level": "low",
-                    }
-                )
-
-        # NOT adding extract_order_items as tool - use process_complete_order instead
-
-        # Track processed emails to prevent duplicates
-        self._processed_emails = set()
-        self._current_attachments = []  # Store current email attachments
-        self._last_order_result = None  # Store the last order processing result
-
-        # Complete order processing tool with full workflow
-        @function_tool(
-            name_override="process_complete_order",
-            description_override="Process complete order with attachments, ChromaDB search, and human review workflow. Attachments are automatically retrieved from context.",
-        )
-        async def process_complete_order(
-            email_subject: str,
-            email_body: str,
-            sender_email: str,
-            attachments: Optional[str] = None,
-        ) -> str:
-            """Process complete order using OrderProcessorAgent with attachment support"""
-
-            # Create a unique key for this email
-            email_key = f"{sender_email}:{email_subject}"
-
-            # Check if already processed
-            if email_key in self._processed_emails:
-                logger.warning(f"Email already processed: {email_key}")
-                return json.dumps(
-                    {
-                        "status": "duplicate",
-                        "message": "This email has already been processed",
-                        "email_subject": email_subject,
-                        "sender": sender_email,
-                    }
-                )
-
-            # Mark as processed
-            self._processed_emails.add(email_key)
-
-            try:
-                # Always use attachments from context (they contain file paths)
-                attachment_list = []
-                if hasattr(self, "_current_attachments") and self._current_attachments:
-                    attachment_list = self._current_attachments
-                    logger.info(
-                        f"Using {len(attachment_list)} attachments from context"
-                    )
-                    for att in attachment_list:
-                        logger.debug(
-                            f"  - {att.get('filename')}: {att.get('filepath')}"
-                        )
-                else:
-                    logger.info("No attachments in context")
-
-                # If attachments were explicitly passed (shouldn't happen with new design)
-                if attachments and not attachment_list:
-                    logger.warning("Attachments passed as parameter (legacy behavior)")
-                    try:
-                        if isinstance(attachments, str):
-                            attachment_list = json.loads(attachments)
-                        else:
-                            attachment_list = attachments
-                    except json.JSONDecodeError:
-                        logger.error(f"Failed to parse attachments JSON: {attachments}")
-
-                # Use the OrderProcessorAgent for comprehensive processing
-                result = await self.order_processor.process_order_email(
-                    email_subject=email_subject,
-                    email_body=email_body,
-                    email_date=datetime.now(),
-                    sender_email=sender_email,
-                    attachments=attachment_list,  # Pass parsed attachments
-                )
-
-                # Format response
-                response = {
-                    "order_id": result.order.order_id if result.order else "N/A",
-                    "customer": (
-                        result.order.customer.email
-                        if result.order
-                        else "Unknown"
-                    ),
-                    "total_items": len(result.order.items) if result.order else 0,
-                    "extraction_confidence": (
-                        result.order.extraction_confidence if result.order else 0
-                    ),
-                    "recommended_action": result.recommended_action,
-                    "approval_status": (
-                        result.order.approval_status if result.order else "failed"
-                    ),
-                    "inventory_matches": (
-                        result.inventory_matches[:20]
-                        if result.inventory_matches
-                        else []
-                    ),  # Keep actual matches for review
-                    "image_matches": (
-                        len(result.image_matches)
-                        if hasattr(result, "image_matches")
-                        else 0
-                    ),
-                    "processing_time_ms": result.processing_time_ms,
-                    "items": [],
-                    "confidence_scores": (
-                        result.confidence_scores
-                        if hasattr(result, "confidence_scores")
-                        else {}
-                    ),
-                }
-
-                # Add item details with image match info
-                if result.order:
-                    for item in result.order.items[:5]:  # Limit to first 5 items
-                        item_data = {
-                            "tag_code": item.tag_specification.tag_code,
-                            "quantity": item.quantity_ordered,
-                            "brand": item.brand,
-                            "match_score": item.inventory_match_score or 0,
-                        }
-                        # Add best image match if available
-                        if hasattr(item, "best_image_match") and item.best_image_match:
-                            item_data["best_image_match"] = {
-                                "tag_code": item.best_image_match.get(
-                                    "tag_code", "Unknown"
-                                ),
-                                "confidence": item.best_image_match.get(
-                                    "confidence", 0
-                                ),
-                                "has_image": "image_path" in item.best_image_match,
-                            }
-                        response["items"].append(item_data)
-
-                # Add any errors or warnings
-                if result.errors:
-                    response["errors"] = result.errors
-                if result.warnings:
-                    response["warnings"] = result.warnings
-
-                logger.info(
-                    f"Processed complete order {response['order_id']} with action: {response['recommended_action']}"
-                )
-
-                # DO NOT auto-create review here - let the orchestrator AI decide
-                # The orchestrator AI will use the create_human_review tool if needed
-                if result.recommended_action == "human_review":
-                    response["needs_review"] = True
-                    response["review_reason"] = getattr(
-                        result.order, "review_notes", "Manual review required"
-                    )
-
-                    # Prepare data for AI to use in review creation
-                    response["review_data_prepared"] = True
-
-                    # Add extracted items for review
-                    extracted_items = []
-                    if result.order and result.order.items:
-                        for item in result.order.items:
-                            extracted_items.append(
-                                {
-                                    "tag_code": item.tag_specification.tag_code,
-                                    "tag_type": item.tag_specification.tag_type.value,
-                                    "quantity": item.quantity_ordered,
-                                    "brand": item.brand,
-                                    "match_score": item.inventory_match_score or 0,
-                                }
-                            )
-                    response["extracted_items_for_review"] = extracted_items
-
-                    logger.info(
-                        f"Order {response['order_id']} marked for review - orchestrator AI will decide on creation"
-                    )
-
-                # Store the result for the AI to use when creating review
-                if hasattr(self, "human_manager"):
-                    # Store in the orchestrator that has human_manager
-                    self._last_order_result = response
-                    self._current_email_subject = email_subject
-                    self._current_email_body = email_body
-
-                # Store the actual image matches list if available
-                if hasattr(result, "image_matches") and isinstance(
-                    result.image_matches, list
-                ):
-                    response["image_matches_list"] = result.image_matches
-                    logger.info(
-                        f"Added {len(result.image_matches)} image matches to response"
-                    )
-
-                # Store the result for GUI access
-                self._last_order_result = response
-                return json.dumps(response, indent=2)
-
-            except Exception as e:
-                logger.error(f"Error in process_complete_order: {e}")
-                return json.dumps({"error": str(e), "status": "failed"})
-
-        tools.append(process_complete_order)
-
-        # Extract data from Excel attachment
-        @function_tool(
-            name_override="extract_excel_data",
-            description_override="Extract order data from Excel file attachment",
-        )
-        async def extract_excel_data(filename: str, content: str) -> str:
-            """Extract and parse data from Excel attachment"""
-            try:
-                import base64
-                import tempfile
-                from pathlib import Path
-
-                import pandas as pd
-
-                # Decode base64 content if needed
-                if isinstance(content, str):
-                    content_bytes = base64.b64decode(content)
-                else:
-                    content_bytes = content
-
-                # Save temporarily and read with pandas
-                with tempfile.NamedTemporaryFile(
-                    suffix=".xlsx", delete=False
-                ) as tmp_file:
-                    tmp_file.write(content_bytes)
-                    tmp_path = tmp_file.name
-
-                # Read Excel file
-                df = pd.read_excel(tmp_path)
-
-                # Extract relevant data
-                extracted_data = {
-                    "filename": filename,
-                    "rows": len(df),
-                    "columns": list(df.columns),
-                    "sample_data": df.head(10).to_dict(orient="records"),
-                    "summary": f"Excel file with {len(df)} rows and {len(df.columns)} columns",
-                }
-
-                # Clean up
-                Path(tmp_path).unlink()
-
-                logger.info(f"Extracted data from Excel: {filename}")
-                return json.dumps(extracted_data, indent=2)
-
-            except Exception as e:
-                logger.error(f"Error extracting Excel data: {e}")
-                return json.dumps({"error": str(e), "filename": filename})
-
-        tools.append(extract_excel_data)
-
-        # Extract data from PDF attachment
-        @function_tool(
-            name_override="extract_pdf_data",
-            description_override="Extract text content from PDF attachment",
-        )
-        async def extract_pdf_data(filename: str, content: str) -> str:
-            """Extract text from PDF attachment"""
-            try:
-                import base64
-                import tempfile
-                from pathlib import Path
-
-                import PyPDF2
-
-                # Decode base64 content if needed
-                if isinstance(content, str):
-                    content_bytes = base64.b64decode(content)
-                else:
-                    content_bytes = content
-
-                # Save temporarily
-                with tempfile.NamedTemporaryFile(
-                    suffix=".pdf", delete=False
-                ) as tmp_file:
-                    tmp_file.write(content_bytes)
-                    tmp_path = tmp_file.name
-
-                # Read PDF
-                with open(tmp_path, "rb") as pdf_file:
-                    pdf_reader = PyPDF2.PdfReader(pdf_file)
-                    num_pages = len(pdf_reader.pages)
-
-                    # Extract text from all pages
-                    extracted_text = []
-                    for page_num in range(
-                        min(num_pages, 10)
-                    ):  # Limit to first 10 pages
-                        page = pdf_reader.pages[page_num]
-                        text = page.extract_text()
-                        if text:
-                            extracted_text.append(f"Page {page_num + 1}:\n{text}")
-
-                # Clean up
-                Path(tmp_path).unlink()
-
-                result = {
-                    "filename": filename,
-                    "pages": num_pages,
-                    "extracted_text": "\n\n".join(extracted_text),
-                    "summary": f"PDF with {num_pages} pages",
-                }
-
-                logger.info(f"Extracted text from PDF: {filename}")
-                return json.dumps(result, indent=2)
-
-            except Exception as e:
-                logger.error(f"Error extracting PDF data: {e}")
-                return json.dumps({"error": str(e), "filename": filename})
-
-        tools.append(extract_pdf_data)
-
-        # Process image attachments tool
-        @function_tool(
-            name_override="process_tag_image",
-            description_override="Process tag image with Qwen2.5VL and store in ChromaDB",
-        )
-        async def process_tag_image(
-            image_path: str, order_id: str, customer_name: str
-        ) -> str:
-            """Process and analyze tag image"""
-            try:
-                result = await self.image_processor.process_and_store_image(
-                    image_path=image_path,
-                    order_id=order_id,
-                    customer_name=customer_name,
-                )
-
-                response = {
-                    "status": result.get("status"),
-                    "image_hash": result.get("image_hash"),
-                    "tag_type": result.get("analysis", {}).get("tag_type"),
-                    "brand": result.get("analysis", {}).get("brand"),
-                    "text_content": result.get("analysis", {}).get("text_content"),
-                    "colors": result.get("analysis", {}).get("colors"),
-                    "stored_in_chromadb": result.get("status") == "success",
-                }
-
-                return json.dumps(response, indent=2)
-
-            except Exception as e:
-                logger.error(f"Error processing tag image: {e}")
-                return json.dumps({"error": str(e), "status": "failed"})
-
-        tools.append(process_tag_image)
-
-        # Inventory search tool
-        @function_tool(
-            name_override="search_inventory",
-            description_override="Search inventory using semantic similarity in ChromaDB",
-        )
-        def search_inventory(query: str, min_quantity: int = 0, limit: int = 5) -> str:
-            """Search ChromaDB for matching inventory"""
-            try:
-                # Build metadata filter
-                where = {}
-                # Removed brand_filter since it's not in the function signature
-                if min_quantity > 0:
-                    where["stock"] = {"$gte": min_quantity}
-
-                # Query ChromaDB
-                results = self.chromadb_client.collection.query(
-                    query_texts=[query],
-                    n_results=limit,
-                    where=where if where else None,
-                    include=["metadatas", "distances", "documents"],
-                )
-
-                # Format results
-                matches = []
-                if results and results.get("ids") and len(results["ids"]) > 0:
-                    for i in range(len(results["ids"][0])):
-                        metadata = results["metadatas"][0][i]
-                        similarity = 1 - results["distances"][0][i]
-
-                        matches.append(
-                            {
-                                "item_id": results["ids"][0][i],
-                                "name": metadata.get("trim_name", "Unknown"),
-                                "code": metadata.get("trim_code", "N/A"),
-                                "brand": metadata.get("brand", "Unknown"),
-                                "stock": metadata.get("stock", 0),
-                                "price": metadata.get("price", 0),
-                                "similarity_score": similarity,
-                                "description": (
-                                    results["documents"][0][i][:200]
-                                    if results["documents"][0][i]
-                                    else ""
-                                ),
-                            }
-                        )
-
-                return json.dumps(matches, indent=2)
-            except Exception as e:
-                logger.error(f"Error searching inventory: {e}")
-                return json.dumps({"error": str(e), "matches": []})
-
-        tools.append(search_inventory)
-
-        # Visual search tool
-        @function_tool(
-            name_override="search_visual",
-            description_override="Search inventory by visual features or image description",
-        )
-        def search_visual(description: str, limit: int = 5) -> List[Dict[str, Any]]:
-            """Visual similarity search"""
-            try:
-                # For now, use text-based search with visual keywords
-                visual_query = f"visual appearance {description}"
-
-                results = self.chromadb_client.collection.query(
-                    query_texts=[visual_query],
-                    n_results=limit,
-                    where=(
-                        {"has_image": True}
-                        if hasattr(self.chromadb_client, "has_image_field")
-                        else None
-                    ),
-                    include=["metadatas", "distances"],
-                )
-
-                matches = []
-                if results and results.get("ids"):
-                    for i in range(len(results["ids"][0])):
-                        metadata = results["metadatas"][0][i]
-                        similarity = 1 - results["distances"][0][i]
-
-                        matches.append(
-                            {
-                                "item_id": results["ids"][0][i],
-                                "name": metadata.get("trim_name", "Unknown"),
-                                "visual_match_score": similarity,
-                                "image_available": metadata.get("has_image", False),
-                                "visual_features": metadata.get("visual_features", []),
-                            }
-                        )
-
-                return matches
-            except Exception as e:
-                logger.error(f"Error in visual search: {e}")
-                return []
-
-        tools.append(search_visual)
-
-        # Customer context tool
-        @function_tool(
-            name_override="get_customer_context",
-            description_override="Retrieve customer history and preferences",
-        )
-        def get_customer_context(customer_email: str) -> str:
-            """Get historical context for customer"""
-            try:
-                # Mock known customers for demo
-                known_customers = {
-                    "allen.solly@example.com": "Regular customer: 15 orders, prefers black woven tags",
-                    "myntra@example.com": "Premium customer: 25 orders, eco-friendly preference",
-                    "ops@zara.com": "New customer: 2 orders, leather tags preference",
-                }
-
-                if customer_email in known_customers:
-                    return known_customers[customer_email]
-
-                # Search for previous orders
-                results = self.chromadb_client.collection.query(
-                    query_texts=[f"orders from {customer_email}"],
-                    n_results=10,
-                    where=(
-                        {"customer_email": customer_email}
-                        if hasattr(self.chromadb_client, "customer_field")
-                        else None
-                    ),
-                    include=["metadatas"],
-                )
-
-                order_count = 0
-                if results and results.get("metadatas") and results["metadatas"][0]:
-                    order_count = len(results["metadatas"][0])
-
-                if order_count > 5:
-                    return f"Regular customer: {order_count} previous orders"
-                elif order_count > 0:
-                    return f"Returning customer: {order_count} previous orders"
-                else:
-                    return "New customer: No order history"
-
-            except Exception as e:
-                logger.error(f"Error getting customer context: {e}")
-                return "Customer history unavailable"
-
-        tools.append(get_customer_context)
-
-        # REMOVED make_decision - this logic is now in process_complete_order
-        # Decision thresholds: >80% auto-approve, 60-80% human review, <60% clarification
-
-        # Document generation tool
-        @function_tool(
-            name_override="generate_document",
-            description_override="Generate quotations, confirmations, or other documents",
-        )
-        def generate_document(
-            doc_type: str, customer_email: str, items: str, decision: str = ""
-        ) -> str:
-            """Generate business documents"""
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-            doc_id = datetime.now().strftime("%Y%m%d-%H%M%S")
-
-            if doc_type == "quotation":
-                return f"Generated Quotation QUO-{doc_id} for {customer_email}. Items: {items}. Valid for 7 days from {timestamp}"
-
-            elif doc_type == "confirmation":
-                return f"Generated Order Confirmation CON-{doc_id} for {customer_email} on {timestamp}. Order: {items}"
-
-            elif doc_type == "clarification":
-                return f"Generated Clarification Request CLA-{doc_id} for {customer_email}. Need details about: {items}"
-
-            else:
-                return f"Generated {doc_type} document {doc_id} for {customer_email} at {timestamp}"
-
-        tools.append(generate_document)
-
-        # Email response tool - Send automated responses to customers/suppliers
-        @function_tool(
-            name_override="send_email_response",
-            description_override="Send email responses to customers, suppliers, or internal staff. Use this to complete the communication loop after processing.",
-        )
-        async def send_email_response(
-            to_email: str,
-            subject: str,
-            body: str,
-            email_type: str,
-            attachments: Optional[List[str]] = None,
-        ) -> str:
-            """Send email response"""
-            import json
-
-            try:
-                # Check if we have Gmail production agent with sending capability
-                if hasattr(self, "gmail_agent") and self.gmail_agent:
-                    # TODO: Implement actual Gmail sending when API is configured
-                    # For now, return mock successful response
-                    logger.info(f"Sending {email_type} email to {to_email}")
-                    logger.debug(
-                        f"Email content: Subject: {subject}, Body preview: {body[:200]}..."
-                    )
-
-                    result = {
-                        "email_sent": True,
-                        "to": to_email,
-                        "subject": subject,
-                        "type": email_type,
-                        "has_attachments": bool(attachments),
-                        "timestamp": datetime.now().isoformat(),
-                        "status": "sent_successfully",
-                        "mock_mode": True,  # Remove when actual sending is implemented
-                    }
-
-                    # Log the response for tracking
-                    logger.info(f"Email response sent successfully to {to_email}")
-
-                    return json.dumps(result)
-                else:
-                    # No Gmail agent available
-                    logger.warning("Gmail agent not available for sending emails")
-
-                    result = {
-                        "email_sent": False,
-                        "to": to_email,
-                        "subject": subject,
-                        "type": email_type,
-                        "status": "gmail_not_configured",
-                        "message": "Email queued for sending when Gmail is configured",
-                    }
-
-                    return json.dumps(result)
-
-            except Exception as e:
-                logger.error(f"Error sending email response: {e}")
-                return json.dumps(
-                    {
-                        "email_sent": False,
-                        "error": str(e),
-                        "to": to_email,
-                        "subject": subject,
-                    }
-                )
-
-        tools.append(send_email_response)
-
-        # Payment tracking tool - Process payment confirmations
-        @function_tool(
-            name_override="track_payment",
-            description_override="Track and process payment confirmations including UTR numbers, cheque details, and payment receipts.",
-        )
-        async def track_payment(
-            sender_email: str,
-            payment_type: str,  # "utr", "cheque", "cash", "online"
-            payment_reference: str,
-            amount: Optional[float] = None,
-            order_id: Optional[str] = None,
-        ) -> str:
-            """Track payment information"""
-            import json
-            import re
-
-            try:
-                # Validate UTR if payment type is UTR
-                if payment_type == "utr":
-                    # UTR validation pattern (12-22 digits)
-                    utr_pattern = r"^\d{12,22}$"
-                    if not re.match(utr_pattern, payment_reference):
-                        logger.warning(f"Invalid UTR format: {payment_reference}")
-                        return json.dumps(
-                            {
-                                "success": False,
-                                "error": "Invalid UTR format",
-                                "payment_reference": payment_reference,
-                                "expected_format": "12-22 digit number",
-                            }
-                        )
-
-                # TODO: Save payment to database
-                # For now, create mock payment record
-                payment_record = {
-                    "payment_id": f"PAY_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                    "customer_email": sender_email,
-                    "payment_type": payment_type,
-                    "payment_reference": payment_reference,
-                    "amount": amount,
-                    "order_id": order_id,
-                    "status": "verified",
-                    "recorded_at": datetime.now().isoformat(),
-                    "requires_manual_verification": payment_type == "cheque",
-                }
-
-                logger.info(
-                    f"Payment tracked: {payment_type} - {payment_reference} from {sender_email}"
-                )
-
-                # Determine next actions
-                next_actions = []
-                if order_id:
-                    next_actions.append("update_order_status to 'payment_received'")
-                    next_actions.append("send_email_response with payment confirmation")
-                else:
-                    next_actions.append("match_payment_to_order using customer email")
-                    next_actions.append("send_email_response requesting order details")
-
-                result = {
-                    "success": True,
-                    "payment_tracked": True,
-                    "payment_record": payment_record,
-                    "confidence": 0.95 if payment_type == "utr" else 0.8,
-                    "next_actions": next_actions,
-                    "requires_human_review": payment_type == "cheque"
-                    or amount > 100000,
-                }
-
-                return json.dumps(result)
-
-            except Exception as e:
-                logger.error(f"Error tracking payment: {e}")
-                return json.dumps(
-                    {
-                        "success": False,
-                        "error": str(e),
-                        "payment_reference": payment_reference,
-                        "requires_human_review": True,
-                    }
-                )
-
-        tools.append(track_payment)
-
-        # Handle supplier inquiry tool
-        @function_tool(
-            name_override="handle_supplier_inquiry",
-            description_override="Handle supplier communications, vendor inquiries, and procurement-related emails.",
-        )
-        async def handle_supplier_inquiry(
-            supplier_email: str, inquiry_type: str, email_subject: str, email_body: str
-        ) -> str:
-            """Handle supplier communications"""
-            import json
-
-            try:
-                # Analyze supplier inquiry
-                inquiry_types = {
-                    "quotation": "Price quotation request",
-                    "material_availability": "Raw material availability check",
-                    "delivery_schedule": "Delivery timeline inquiry",
-                    "payment_terms": "Payment terms discussion",
-                    "quality_concern": "Quality issue report",
-                    "new_vendor": "New vendor registration",
-                }
-
-                # Create inquiry record
-                inquiry_record = {
-                    "inquiry_id": f"INQ_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                    "supplier_email": supplier_email,
-                    "inquiry_type": inquiry_type,
-                    "description": inquiry_types.get(inquiry_type, "General inquiry"),
-                    "subject": email_subject,
-                    "priority": (
-                        "high"
-                        if inquiry_type in ["quality_concern", "delivery_schedule"]
-                        else "medium"
-                    ),
-                    "received_at": datetime.now().isoformat(),
-                }
-
-                # Determine routing
-                routing = {
-                    "quotation": "procurement_team",
-                    "material_availability": "inventory_team",
-                    "delivery_schedule": "production_planning",
-                    "payment_terms": "finance_team",
-                    "quality_concern": "quality_assurance",
-                    "new_vendor": "vendor_management",
-                }
-
-                route_to = routing.get(inquiry_type, "procurement_team")
-
-                result = {
-                    "success": True,
-                    "inquiry_processed": True,
-                    "inquiry_record": inquiry_record,
-                    "routed_to": route_to,
-                    "auto_response_sent": True,
-                    "response_message": f"Your {inquiry_types.get(inquiry_type, 'inquiry')} has been received and forwarded to our {route_to.replace('_', ' ')}. We will respond within 24 hours.",
-                    "requires_human_review": inquiry_type
-                    in ["quality_concern", "new_vendor"],
-                    "confidence": 0.85,
-                }
-
-                logger.info(
-                    f"Supplier inquiry processed: {inquiry_type} from {supplier_email}, routed to {route_to}"
-                )
-
-                return json.dumps(result)
-
-            except Exception as e:
-                logger.error(f"Error handling supplier inquiry: {e}")
-                return json.dumps(
-                    {
-                        "success": False,
-                        "error": str(e),
-                        "supplier_email": supplier_email,
-                        "requires_human_review": True,
-                    }
-                )
-
-        tools.append(handle_supplier_inquiry)
-
-        # Order status update tool
-        @function_tool(
-            name_override="update_order_status",
-            description_override="Update order status in the system",
-        )
-        def update_order_status(order_id: str, new_status: str, notes: str = "") -> str:
-            """Update order status"""
-            valid_statuses = [
-                "pending",
-                "approved",
-                "in_production",
-                "completed",
-                "cancelled",
-            ]
-
-            if new_status not in valid_statuses:
-                return f"Error: Invalid status '{new_status}'. Must be one of: {', '.join(valid_statuses)}"
-
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-            # In real implementation, would update database
-            return f"Order {order_id} status updated to '{new_status}' at {timestamp}. Notes: {notes if notes else 'None'}"
-
-        tools.append(update_order_status)
-
-        return tools
+## CRITICAL INSTRUCTION: ALWAYS CALL classify_email_intent FIRST!
+
+Before doing ANYTHING else, you MUST first call classify_email_intent to understand what type of email this is.
+This is MANDATORY - do not skip this step or call any other tool before this one.
+
+## YOUR AVAILABLE TOOLS
+
+You have exactly these tools available (USE IN ORDER):
+1. **classify_email_intent** - Classify email type (ORDER/PAYMENT/INQUIRY/etc.) - ⚠️ MUST BE CALLED FIRST!
+2. **check_emails** - Check for new emails
+3. **send_email_response** - Send email response (IRREVERSIBLE - requires approval)
+4. **search_inventory** - Search for items in inventory by query
+5. **process_complete_order** - Process order with attachments and search
+6. **update_order_status** - Update order status in database
+7. **extract_excel_data** - Extract data from Excel attachments
+8. **extract_pdf_data** - Extract text from PDF attachments
+9. **process_tag_image** - Process tag images with AI
+10. **generate_document** - Generate quotations/invoices
+11. **get_customer_context** - Get customer history
+12. **track_payment** - Track payment confirmations
+13. **handle_supplier_inquiry** - Handle supplier communications
+
+## WORKFLOW FOR PROCESSING EMAILS
+
+### Step 1: ALWAYS Classify First
+Use `classify_email_intent` with ALL parameters:
+- email_subject: The email subject
+- email_body: The email body text
+- sender_email: Who sent it
+- recipient_email: Who received it
+
+### Step 2: Based on Classification, Take Action
+
+For NEW_ORDER:
+1. Use `process_complete_order` to handle the order
+2. Use `search_inventory` to find matching items
+3. Use `generate_document` for proforma invoice (requires approval)
+4. Use `send_email_response` if response needed (requires approval)
+
+For PAYMENT:
+1. Use `track_payment` to process payment info
+2. Use `update_order_status` to update database
+3. Use `send_email_response` if confirmation needed (requires approval)
+
+For INQUIRY:
+1. Use `search_inventory` for product inquiries
+2. Use `get_customer_context` for customer info
+3. Use `send_email_response` to reply (requires approval)
+
+For SUPPLIER:
+1. Use `handle_supplier_inquiry` for vendor communications
+
+### Step 3: Handle Attachments
+- Use `extract_excel_data` for .xlsx/.xls/.csv files
+- Use `extract_pdf_data` for .pdf files
+- Use `process_tag_image` for image files
+
+## TWO-TIER ACTION SYSTEM
+
+### Reversible Actions (Auto-Execute):
+- classify_email_intent
+- check_emails
+- search_inventory
+- extract_excel_data
+- extract_pdf_data
+- get_customer_context
+- update_order_status
+
+### Irreversible Actions (Require Approval):
+- send_email_response
+- generate_document
+- process_complete_order (when it modifies data)
+- track_payment (when confirming payment)
+
+## IMPORTANT RULES
+1. ALWAYS call `classify_email_intent` first
+2. Only use tools from the available list above
+3. Don't call tools that don't exist
+4. Some emails don't need responses - be intelligent
+5. When sending emails or generating documents, they require approval"""
 
     async def process_email(self, email_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Let the agent autonomously process an email with tracing"""
+        """Process an email using direct API with true approval capability"""
         logger.info(f"Processing email: {email_data.get('subject', 'No subject')}")
+        
+        # Phase 3: Generate workflow ID for this email processing
+        self.current_workflow_id = self._generate_workflow_id()
+        self.workflow_actions = []  # Reset actions for new workflow
+        logger.info(f"Starting workflow {self.current_workflow_id}")
+        
+        # Phase 4: Set workflow ID in two-tier executor
+        self.two_tier_executor.set_workflow_id(self.current_workflow_id)
 
         # Create trace name based on email
         trace_name = f"Email_Processing_{email_data.get('subject', 'No_subject')[:30]}"
 
-        # Use trace context for monitoring
-        with trace(trace_name):
-            try:
-                # Prepare attachments if present
-                attachments_data = []
-                attachment_summary = []
-                if email_data.get("attachments"):
-                    logger.info(
-                        f"Processing {len(email_data['attachments'])} attachments"
-                    )
-                    for attachment in email_data["attachments"]:
-                        # Log attachment details
-                        logger.debug(f"Attachment: {attachment}")
+        # Process without SDK trace (we'll add our own monitoring)
+        # with trace(trace_name):  # SDK trace not available with direct API
+        try:
+            # Prepare attachments if present
+            attachments_data = []
+            attachment_summary = []
+            if email_data.get("attachments"):
+                logger.info(
+                    f"Processing {len(email_data['attachments'])} attachments"
+                )
+                for attachment in email_data["attachments"]:
+                    # Log attachment details
+                    logger.debug(f"Attachment: {attachment}")
 
-                        # Store attachment data with file paths
-                        att_data = {
-                            "filename": attachment.get("filename", "unknown"),
-                            "filepath": attachment.get(
-                                "filepath", ""
-                            ),  # File path instead of content
-                            "mime_type": attachment.get(
-                                "mime_type", "application/octet-stream"
-                            ),
-                        }
-                        attachments_data.append(att_data)
+                    # Store attachment data with file paths
+                    att_data = {
+                        "filename": attachment.get("filename", "unknown"),
+                        "filepath": attachment.get(
+                            "filepath", ""
+                        ),  # File path instead of content
+                        "mime_type": attachment.get(
+                            "mime_type", "application/octet-stream"
+                        ),
+                    }
+                    attachments_data.append(att_data)
 
-                        # Log if filepath is missing
-                        if not att_data["filepath"]:
-                            logger.warning(
-                                f"Missing filepath for attachment: {att_data['filename']}"
-                            )
-
-                        # Create summary for prompt
-                        attachment_summary.append(
-                            f"{attachment.get('filename', 'unknown')} ({attachment.get('mime_type', 'unknown')})"
+                    # Log if filepath is missing
+                    if not att_data["filepath"]:
+                        logger.warning(
+                            f"Missing filepath for attachment: {att_data['filename']}"
                         )
 
-                    logger.info(
-                        f"Prepared {len(attachments_data)} attachments for processing"
+                    # Create summary for prompt
+                    attachment_summary.append(
+                        f"{attachment.get('filename', 'unknown')} ({attachment.get('mime_type', 'unknown')})"
                     )
 
-                # Store attachments in context for tools to access
-                self._current_attachments = attachments_data
-                logger.info(f"Stored {len(attachments_data)} attachments in context")
-
-                # Construct prompt for autonomous processing with classification
-                # Don't truncate the email body - it's crucial for extraction
-                email_body = email_data.get("body", "No body")
-                recipient_email = email_data.get(
-                    "to",
-                    (
-                        self.primary_emails[0]
-                        if self.primary_emails
-                        else "orders@factory.com"
-                    ),
+                logger.info(
+                    f"Prepared {len(attachments_data)} attachments for processing"
                 )
 
-                prompt = f"""
-Analyze and process this business email autonomously:
+            # Store attachments in context for tools to access
+            # Need to pass this to the order tools
+            if hasattr(self.tool_factory, 'order_processor'):
+                # We need a way to set context - for now, use the global approach
+                # This is a limitation that needs addressing in production
+                pass
 
-To: {recipient_email}
-From: {email_data.get('from', 'Unknown')}
-Subject: {email_data.get('subject', 'No subject')}
-Body: {email_body}
-Attachments: {len(attachments_data)} files - {', '.join(attachment_summary) if attachment_summary else 'None'}
+            # Construct prompt for autonomous processing with classification
+            email_body = email_data.get("body", "No body")
+            recipient_email = email_data.get(
+                "to",
+                (
+                    self.primary_emails[0]
+                    if self.primary_emails
+                    else "orders@factory.com"
+                ),
+            )
 
-Your workflow:
-1. First, use classify_email_intent to determine the email type
-   - Pass the recipient_email to understand context
-2. Based on the classification, execute the appropriate tools
-3. Generate and send an appropriate response if needed
-4. Complete the entire chain of execution
+            # Format attachment list for AI
+            attachment_list = ""
+            if attachments_data:
+                attachment_list = "\n\nAttachment Details:"
+                for att in attachments_data:
+                    attachment_list += f"\n- {att['filename']} (path: {att['filepath']})"
+            
+            prompt = f"""
+Process this email using the available tools.
 
-Remember: This email came to {recipient_email} which is one of our business emails.
-Different emails may have different typical patterns - use this context wisely.
+Email Details:
+- From: {email_data.get('from', 'Unknown')}
+- To: {recipient_email}
+- Subject: {email_data.get('subject', 'No subject')}
+- Body: {email_body}
+- Attachments: {len(attachments_data)} files{attachment_list}
 
-The attachments are already available in the context - tools will access them automatically.
+REQUIRED STEPS:
 
-Execute the complete workflow based on the email's intent and context.
+1. FIRST: Call `classify_email_intent` with these parameters:
+   - email_subject: "{email_data.get('subject', 'No subject')}"
+   - email_body: "{email_body[:500]}"
+   - sender_email: "{email_data.get('from', 'Unknown')}"
+   - recipient_email: "{recipient_email}"
+
+2. THEN based on the classification result:
+   
+   If NEW_ORDER or order details found:
+   - Call `process_complete_order` with the email_data and attachments list
+   - For PDF attachments, call `extract_pdf_data` with filename parameter from the paths above
+   - For Excel attachments, call `extract_excel_data` with filename parameter from the paths above
+   - Call `search_inventory` for any specific items mentioned (like "TBALWBL0009N")
+   
+   If PAYMENT mentioned:
+   - Call `track_payment` with payment details
+   - Call `update_order_status` if order ID is known
+   
+   If INQUIRY:
+   - Call `search_inventory` with the query
+   - Call `get_customer_context` for customer info
+
+3. FINALLY: If a response is truly needed (not all emails need responses):
+   - Call `send_email_response` with appropriate message
+
+IMPORTANT TOOL PARAMETERS:
+- extract_pdf_data needs: filename (use the full path from attachment list)
+- extract_excel_data needs: filename (use the full path from attachment list)
+- search_inventory needs: query (text to search for)
+- process_complete_order needs: email_data and attachments
+
+REMEMBER:
+- Only use tools from the available list
+- Use the file paths provided above for attachment processing
+- Some emails are just FYI and don't need responses
+- Irreversible actions will be queued for approval
 """
 
-                # Start monitoring this trace
-                trace_monitor.start_trace(
-                    trace_name,
-                    {
-                        "email_from": email_data.get("from", "Unknown"),
-                        "email_subject": email_data.get("subject", "No subject"),
-                        "email_type": email_data.get("email_type", "unknown"),
-                    },
-                )
+            # Start monitoring this trace
+            trace_monitor.start_trace(
+                trace_name,
+                {
+                    "email_from": email_data.get("from", "Unknown"),
+                    "email_subject": email_data.get("subject", "No subject"),
+                    "email_type": email_data.get("email_type", "unknown"),
+                },
+            )
 
-                # Run the agent autonomously with trace
-                result = await self.runner.run(
-                    self.agent,
-                    prompt,
-                    context={
-                        "email_data": email_data,
-                        "timestamp": datetime.now().isoformat(),
-                    },
-                )
+            # Use direct OpenAI API for true approval capability
+            messages = [
+                {"role": "system", "content": self.agent_instructions},
+                {"role": "user", "content": prompt}
+            ]
+            
+            # Log the tool schemas being passed
+            logger.debug(f"Passing {len(self.tool_schemas)} tool schemas to OpenAI")
+            for schema in self.tool_schemas[:3]:  # Log first 3 schemas
+                logger.debug(f"Tool schema: {schema.get('function', {}).get('name', 'unknown')}")
+            
+            # Get initial response from model with tool schemas
+            logger.info("Calling OpenAI API with tools...")
+            response = await self.openai_client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                tools=self.tool_schemas,
+                tool_choice="auto"
+            )
+            
+            # Log the raw response
+            logger.debug(f"OpenAI response received: {response.choices[0].message}")
 
-                # Extract tool calls from raw responses
-                tool_calls = []
-                if hasattr(result, "raw_responses"):
-                    for response in result.raw_responses:
-                        if hasattr(response, "model_response"):
-                            model_resp = response.model_response
-                            if hasattr(model_resp, "choices"):
-                                for choice in model_resp.choices:
-                                    if hasattr(choice, "message") and hasattr(
-                                        choice.message, "tool_calls"
-                                    ):
-                                        if choice.message.tool_calls:
-                                            for tc in choice.message.tool_calls:
-                                                tool_call = {
-                                                    "tool": (
-                                                        tc.function.name
-                                                        if hasattr(tc.function, "name")
-                                                        else "unknown"
-                                                    ),
-                                                    "args": (
-                                                        json.loads(
-                                                            tc.function.arguments
-                                                        )
-                                                        if hasattr(
-                                                            tc.function, "arguments"
-                                                        )
-                                                        else {}
-                                                    ),
-                                                    "result": "See logs",  # Results aren't directly available
-                                                }
-                                                tool_calls.append(tool_call)
-                                                # Add to trace monitor
-                                                trace_monitor.add_tool_call(
-                                                    tool_name=tool_call["tool"],
-                                                    args=tool_call["args"],
-                                                    result=tool_call["result"],
-                                                )
-
-                # Log trace information
-                logger.info(f"Trace created: {trace_name}")
-                logger.info(f"Tool calls made: {len(tool_calls)}")
-
-                # Add decisions to trace monitor
-                # Note: RunResult doesn't have context attribute in current SDK
-                # if hasattr(result, 'context') and result.context.get('decisions'):
-                #     for decision in result.context['decisions']:
-                #         trace_monitor.add_decision(
-                #             decision_type=decision.get('type', 'unknown'),
-                #             details=decision
-                #         )
-
-                # End trace with summary
-                final_output = str(result) if result else "No output"
-                trace_monitor.end_trace("completed", final_output[:200])
-
-                # Include the last order result if available
-                result_dict = {
-                    "success": True,
-                    "email_id": email_data.get("message_id", "unknown"),
-                    "processing_complete": True,
-                    "trace_name": trace_name,
-                    "tool_calls": tool_calls,
-                    "decisions_made": [],  # Would need to extract from tool calls
-                    "documents_generated": [],  # Would need to extract from tool calls
-                    "final_summary": str(result),
-                    "autonomous_actions": len(tool_calls),
-                }
-
-                # Add the actual order processing result if available
-                if hasattr(self, "_last_order_result") and self._last_order_result:
-                    result_dict["order_result"] = self._last_order_result
-                    # Pass the actual list if available, otherwise the count
-                    if "image_matches_list" in self._last_order_result:
-                        result_dict["image_matches"] = self._last_order_result[
-                            "image_matches_list"
-                        ]
+            # Reset validator for new email
+            self.validator.reset()
+            
+            # Determine validation context
+            validation_context = {
+                "has_attachments": bool(email_data.get("attachments")),
+                "email_data": email_data
+            }
+            
+            # Process tool calls with TRUE approval capability AND validation
+            tool_calls = []
+            auto_executed = []
+            pending_approval = []
+            
+            # Tool calling loop with validation
+            max_iterations = 10
+            iteration = 0
+            validation_failures = 0
+            max_validation_failures = 3
+            result = None
+            
+            # Continue processing until no more tools needed or max iterations
+            while iteration < max_iterations:
+                # Make API call with tools (allow continued iteration)
+                if iteration > 0:
+                    logger.info(f"Tool calling iteration {iteration} - allowing AI to continue...")
+                    response = await self.openai_client.chat.completions.create(
+                        model=self.model,
+                        messages=messages,
+                        tools=self.tool_schemas,
+                        tool_choice="auto"
+                    )
+                
+                # Check if AI wants to make tool calls
+                if not response.choices[0].message.tool_calls:
+                    # No more tools needed - get final response
+                    result = response.choices[0].message.content
+                    logger.info("AI completed tool calling - no more tools needed")
+                    break
+                
+                # Process tool calls
+                logger.info(f"AI requested {len(response.choices[0].message.tool_calls)} tool calls in iteration {iteration}")
+                tool_results = []
+                had_validation_failure = False
+                
+                for tool_call in response.choices[0].message.tool_calls:
+                    tool_name = tool_call.function.name
+                    tool_args = json.loads(tool_call.function.arguments)
+                    logger.info(f"Tool call requested: {tool_name} with args: {tool_args}")
+                    
+                    # VALIDATE BEFORE EXECUTION
+                    is_valid, feedback = self.validator.validate(
+                        tool_name,
+                        tool_args,
+                        validation_context
+                    )
+                    
+                    if is_valid:
+                        # Validation passed - execute the tool
+                        logger.info(f"✅ Validation passed for: {tool_name}")
+                        
+                        # THIS IS THE KEY: Intercept and apply approval logic BEFORE execution
+                        result = await self.confirm_and_execute(tool_name, tool_args)
+                        
+                        # Record successful execution
+                        self.validator.record(tool_name, result)
+                    
+                        # Parse result to track what happened
+                        try:
+                            result_dict = json.loads(result) if isinstance(result, str) else result
+                            if isinstance(result_dict, dict) and result_dict.get("status") == "pending_approval":
+                                # Action was queued for approval (NOT executed)
+                                pending_approval.append({
+                                    "action_id": result_dict.get("action_id"),
+                                    "action_name": tool_name,
+                                    "type": "irreversible",
+                                    "status": "pending_approval"
+                                })
+                            else:
+                                # Action was auto-executed (reversible)
+                                auto_executed.append({
+                                    "action_name": tool_name,
+                                    "type": "reversible",
+                                    "status": "executed"
+                                })
+                        except:
+                            # If we can't parse, assume it was executed
+                            auto_executed.append({
+                                "action_name": tool_name,
+                                "type": "unknown",
+                                "status": "executed"
+                            })
+                        
+                        tool_results.append({
+                            "tool_call_id": tool_call.id,
+                            "result": str(result)
+                        })
+                    
                     else:
-                        result_dict["image_matches"] = self._last_order_result.get(
-                            "image_matches", 0
+                        # Validation failed - send error back to AI
+                        logger.warning(f"❌ Validation failed for {tool_name}: {feedback}")
+                        had_validation_failure = True
+                        validation_failures += 1
+                        
+                        # Create detailed error response
+                        error_response = {
+                            "error": "validation_failed",
+                            "tool": tool_name,
+                            "message": feedback,
+                            "suggestions": self.validator.get_suggested_next_tools(),
+                            "executed_so_far": self.validator.execution_history,
+                            "guidance": (
+                                "IMPORTANT: Your tool call was invalid. Please read the error message carefully. "
+                                "You must follow the correct workflow order. "
+                                "Always call 'classify_email_intent' first if you haven't already."
+                            )
+                        }
+                        
+                        # Add error result
+                        tool_results.append({
+                            "tool_call_id": tool_call.id,
+                            "result": json.dumps(error_response)
+                        })
+                    
+                    # Track tool call
+                    tool_calls.append({
+                        "tool": tool_name,
+                        "args": tool_args,
+                        "result": str(result)[:200]  # Truncate for logging
+                    })
+                    
+                    # Add to trace monitor
+                    trace_monitor.add_tool_call(
+                        tool_name=tool_name,
+                        args=tool_args,
+                        result=str(result)[:200]
+                    )
+                    
+                    logger.debug(f"Processed tool call: {tool_name} with result: {str(result)[:100]}")
+                
+                # Add results to message history
+                messages.append(response.choices[0].message)
+                for tool_result in tool_results:
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_result["tool_call_id"],
+                        "content": tool_result["result"]
+                    })
+                
+                # If validation failed, add strong guidance
+                if had_validation_failure:
+                    suggestions = self.validator.get_suggested_next_tools()
+                    executed = self.validator.execution_history
+                    
+                    # Build guidance message
+                    guidance_msg = (
+                        "⚠️ VALIDATION FAILED - PLEASE FOLLOW THE CORRECT WORKFLOW:\n\n"
+                    )
+                    
+                    if not executed:
+                        guidance_msg += (
+                            "You haven't executed any valid tools yet.\n"
+                            "YOU MUST START WITH: classify_email_intent\n\n"
+                            "Call it with these parameters:\n"
+                            "- email_subject: The subject of the email\n"
+                            "- email_body: The body of the email\n"
+                            "- sender_email: The sender's email address\n"
                         )
-                    result_dict["items"] = self._last_order_result.get("items", [])
+                    else:
+                        guidance_msg += (
+                            f"Tools executed so far: {executed}\n"
+                            f"Suggested next tools: {suggestions}\n\n"
+                            "Remember the correct order:\n"
+                            "1. classify_email_intent (MUST be first)\n"
+                            "2. extract attachments (if any)\n"
+                            "3. process the order\n"
+                            "4. generate response"
+                        )
+                    
+                    # Add system message with guidance
+                    messages.append({
+                        "role": "system",
+                        "content": guidance_msg
+                    })
+                    
+                    # Check if too many validation failures
+                    if validation_failures >= max_validation_failures:
+                        logger.error(f"Too many validation failures ({validation_failures})")
+                        result = (
+                            "Workflow terminated due to repeated validation failures. "
+                            "Please ensure you call 'classify_email_intent' first."
+                        )
+                        break
+                
+                iteration += 1
+            
+            # Check if we hit max iterations
+            if iteration >= max_iterations and result is None:
+                logger.warning(f"Hit maximum iterations ({max_iterations})")
+                result = "Maximum iterations reached. Workflow may be incomplete."
 
-                return result_dict
+            # Log trace information
+            logger.info(f"Trace created: {trace_name}")
+            logger.info(f"Tool calls made: {len(tool_calls)}")
 
-            except Exception as e:
-                logger.error(f"Error in autonomous processing: {e}")
-                return {
-                    "success": False,
-                    "email_id": email_data.get("message_id", "unknown"),
-                    "error": str(e),
-                    "trace_name": trace_name,
-                }
+            # End trace with summary
+            final_output = str(result) if result else "No output"
+            trace_monitor.end_trace("completed", final_output[:200])
+
+            # Phase 3: Generate reasoning for actions taken
+            reasoning = self._generate_reasoning(email_data, self.workflow_actions)
+            
+            # Phase 4: Get two-tier execution summary (currently not used as tools execute directly)
+            # workflow_summary = self.two_tier_executor.get_workflow_summary()
+            
+            # Sync pending actions to Human Review system
+            if pending_approval and hasattr(self, 'human_manager'):
+                logger.info(f"Syncing {len(pending_approval)} pending actions to Human Review system")
+                for action in pending_approval:
+                    try:
+                        # Create a review request for each pending action
+                        review_request = await self.human_manager.create_review_request(
+                            order_id=None,  # We don't have order IDs for these actions
+                            customer_email=email_data.get("from", "unknown@email.com"),
+                            order_details={
+                                "action": action.get("action_name"),
+                                "parameters": action.get("parameters", {}),
+                                "action_id": action.get("action_id"),
+                                "workflow_id": self.current_workflow_id,
+                            },
+                            confidence_score=0.75,  # Default confidence for approval items
+                            reason=f"Irreversible action requires approval: {action.get('action_name')}",
+                            priority="MEDIUM",
+                            context={
+                                "email_subject": email_data.get("subject", ""),
+                                "email_body": email_data.get("body", "")[:500],
+                                "action_type": "irreversible",
+                            }
+                        )
+                        logger.info(f"Created review request {review_request['request_id']} for {action.get('action_name')}")
+                    except Exception as e:
+                        logger.error(f"Failed to create review request for action {action.get('action_name')}: {e}")
+            
+            # Get workflow summary from validator
+            workflow_summary = self.validator.get_workflow_summary()
+            
+            # Log validation statistics
+            logger.info(f"Validation stats: {workflow_summary['validation_stats']}")
+            logger.info(f"Workflow complete: {workflow_summary['is_complete']}")
+            
+            # Build result
+            result_dict = {
+                "success": True,
+                "email_id": email_data.get("message_id", "unknown"),
+                "processing_complete": True,
+                "trace_name": trace_name,
+                "workflow_id": self.current_workflow_id,  # Add workflow ID
+                "tool_calls": tool_calls,
+                "actions_tracked": len(self.workflow_actions),  # Number of tracked actions
+                "decisions_made": [],
+                "documents_generated": [],
+                "final_summary": str(result),
+                "reasoning": reasoning,  # Add reasoning
+                "autonomous_actions": len(tool_calls),
+                # Validation statistics
+                "validation_stats": workflow_summary["validation_stats"],
+                "workflow_complete": workflow_summary["is_complete"],
+                "executed_tools": workflow_summary["executed_tools"],
+                "email_type": workflow_summary.get("email_type", "unknown"),
+                # Phase 4: Two-tier execution results
+                # Using our tracked lists instead of two_tier_executor (which isn't being used currently)
+                "auto_executed_actions": auto_executed,
+                "pending_approval_actions": pending_approval,
+            }
+
+            return result_dict
+
+        except Exception as e:
+            logger.error(f"Error in autonomous processing: {e}")
+            trace_monitor.end_trace("failed", str(e))
+            return {
+                "success": False,
+                "email_id": email_data.get("message_id", "unknown"),
+                "error": str(e),
+                "trace_name": trace_name,
+            }
 
     async def start_email_monitoring(self):
         """Start autonomous email monitoring with tracing"""
@@ -1556,10 +801,10 @@ Execute the complete workflow based on the email's intent and context.
             cycle_count += 1
             trace_name = f"Email_Monitoring_Cycle_{cycle_count}"
 
-            with trace(trace_name):
-                try:
-                    # Let the agent check for emails autonomously
-                    check_prompt = """
+            # Process without SDK trace
+            try:
+                # Let the agent check for emails autonomously
+                check_prompt = """
 Check for new emails and process any that you find.
 Use your tools to:
 1. Check for new emails
@@ -1568,193 +813,321 @@ Use your tools to:
 4. Provide a summary of what was done
 """
 
-                    result = await self.runner.run(self.agent, check_prompt)
+                # Use direct API for monitoring
+                messages = [
+                    {"role": "system", "content": self.agent_instructions},
+                    {"role": "user", "content": check_prompt}
+                ]
+                
+                result = await self.openai_client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    tools=self.tool_schemas,
+                    tool_choice="auto"
+                )
 
-                    # Log monitoring results
-                    tool_count = (
-                        len(result.tool_calls) if hasattr(result, "tool_calls") else 0
-                    )
-                    logger.info(
-                        f"Monitoring cycle {cycle_count} complete. Actions taken: {tool_count}"
-                    )
-                    logger.info(f"Trace: {trace_name}")
+                # Log monitoring results
+                tool_count = len(result.choices[0].message.tool_calls) if result.choices[0].message.tool_calls else 0
+                logger.info(
+                    f"Monitoring cycle {cycle_count} complete. Actions taken: {tool_count}"
+                )
+                logger.info(f"Trace: {trace_name}")
 
-                    # Wait before next cycle
-                    await asyncio.sleep(settings.email_poll_interval)
+                # Wait before next cycle
+                await asyncio.sleep(settings.email_poll_interval)
 
-                except Exception as e:
-                    logger.error(f"Error in monitoring cycle {cycle_count}: {e}")
-                    await asyncio.sleep(60)  # Wait 1 minute on error
+            except Exception as e:
+                logger.error(f"Error in monitoring cycle {cycle_count}: {e}")
+                await asyncio.sleep(60)  # Wait 1 minute on error
 
     async def stop(self):
         """Stop the orchestrator"""
         self.is_monitoring = False
         logger.info("Autonomous orchestrator stopped")
-
+    
     def is_running(self) -> bool:
         """Check if orchestrator is running"""
         return self.is_monitoring
-
-    def _extract_item_description(self, text: str, quantity: str) -> str:
-        """Extract item description near quantity mention"""
-        # Simple extraction - in real implementation would be more sophisticated
-        words = text.split()
-        for i, word in enumerate(words):
-            if quantity in word:
-                start = max(0, i - 5)
-                end = min(len(words), i + 5)
-                return " ".join(words[start:end])
-        return "tags"
-
-    def _extract_specifications(self, text: str) -> Dict[str, Any]:
-        """Extract specifications from text"""
-        specs = {}
-
-        # Size extraction
-        import re
-
-        size_pattern = r"(\d+)\s*x\s*(\d+)\s*(?:inches|inch|cm)?"
-        size_match = re.search(size_pattern, text.lower())
-        if size_match:
-            specs["size"] = f"{size_match.group(1)}x{size_match.group(2)}"
-
-        # Material
-        materials = ["cotton", "satin", "leather", "paper", "recycled", "eco"]
-        for material in materials:
-            if material in text.lower():
-                specs["material"] = material
+    
+    async def approve_action(self, action_id: str) -> Dict[str, Any]:
+        """
+        Approve and execute a pending irreversible action.
+        Uses the original tool via ToolContext to bypass approval check.
+        
+        Args:
+            action_id: ID of the action to approve
+            
+        Returns:
+            Result of executing the action
+        """
+        # Find the pending action
+        pending_action = None
+        for action in self.pending_actions:
+            if action.get("action_id") == action_id:
+                pending_action = action
                 break
-
-        # Color
-        colors = ["black", "white", "blue", "green", "red", "gold", "silver"]
-        for color in colors:
-            if color in text.lower():
-                specs["color"] = color
-                break
-
-        return specs
-
-    def _get_tools_for_intent(self, intent: str) -> List[str]:
-        """Get recommended tools based on intent"""
-        tool_mapping = {
-            "NEW_ORDER": [
-                "process_complete_order",
-                "generate_document",
-                "send_email_response",
-            ],
-            "ORDER_MODIFICATION": [
-                "get_order_status",
-                "update_order",
-                "send_email_response",
-            ],
-            "URGENT_ORDER": [
-                "process_complete_order",
-                "priority_flag",
-                "send_email_response",
-            ],
-            "PAYMENT": ["track_payment", "update_order_status", "send_email_response"],
-            "PAYMENT_INQUIRY": ["check_payment_status", "send_email_response"],
-            "INQUIRY": [
-                "search_inventory",
-                "get_customer_context",
-                "send_email_response",
-            ],
-            "QUOTATION_REQUEST": [
-                "calculate_quote",
-                "generate_document",
-                "send_email_response",
-            ],
-            "NEW_CUSTOMER": [
-                "create_customer",
-                "send_welcome_package",
-                "send_email_response",
-            ],
-            "FOLLOWUP": ["get_order_status", "send_email_response"],
-            "SUPPLIER": [
-                "handle_supplier_inquiry",
-                "forward_to_procurement",
-                "send_email_response",
-            ],
-            "MATERIAL_QUOTATION": [
-                "process_supplier_quote",
-                "compare_prices",
-                "send_email_response",
-            ],
-            "DELIVERY_UPDATE": [
-                "update_delivery_status",
-                "notify_customer",
-                "send_email_response",
-            ],
-            "COMPLAINT": [
-                "create_ticket",
-                "get_customer_context",
-                "send_email_response",
-            ],
-            "QUALITY_ISSUE": [
-                "create_quality_report",
-                "notify_qa_team",
-                "send_email_response",
-            ],
-            "INVOICE_REQUEST": ["generate_invoice", "send_email_response"],
-        }
-        return tool_mapping.get(intent, ["get_customer_context", "send_email_response"])
-
-    async def _update_sender_pattern(
-        self,
-        sender_email: str,
-        recipient_email: str,
-        recipient_description: str,
-        intent: str,
-        subject: str,
-    ):
-        """Update pattern with business context"""
+        
+        if not pending_action:
+            return {"error": f"Action {action_id} not found in pending actions"}
+        
+        logger.info(f"✅ APPROVING ACTION: {pending_action['action_name']} ({action_id})")
+        
+        # Get the wrapped tool from the pending action
+        wrapped_tool = pending_action.get("tool")
+        if not wrapped_tool:
+            # Fallback to tool map if not stored
+            wrapped_tool = self.tool_map.get(pending_action['action_name'])
+        
+        if not wrapped_tool or not hasattr(wrapped_tool, 'original_tool'):
+            return {"error": f"Tool not found or not properly wrapped for {pending_action['action_name']}"}
+        
+        # Get the original tool to bypass approval logic
+        original_tool = wrapped_tool.original_tool
+        params = pending_action.get('parameters', {})
+        
         try:
-            from ..factory_database.connection import get_db
-            from ..factory_database.models import EmailPattern
-
-            with get_db() as db:
-                pattern = (
-                    db.query(EmailPattern)
-                    .filter_by(
-                        sender_email=sender_email,
-                        recipient_email=recipient_email,
-                        intent_type=intent,
-                    )
-                    .first()
-                )
-
-                if pattern:
-                    pattern.count += 1
-                    pattern.last_seen = datetime.utcnow()
-                    pattern.recipient_description = (
-                        recipient_description  # Update description
-                    )
-
-                    # Update subject keywords
-                    if pattern.subject_keywords:
-                        keywords = json.loads(pattern.subject_keywords)
-                    else:
-                        keywords = []
-                    keywords.extend(subject.lower().split()[:5])
-                    pattern.subject_keywords = json.dumps(list(set(keywords))[:20])
-                else:
-                    pattern = EmailPattern(
-                        sender_email=sender_email,
-                        recipient_email=recipient_email,
-                        recipient_description=recipient_description,
-                        intent_type=intent,
-                        count=1,
-                        subject_keywords=json.dumps(subject.lower().split()[:5]),
-                    )
-                    db.add(pattern)
-
-                db.commit()
-                logger.info(
-                    f"Pattern updated: {sender_email}→{recipient_email} ({intent})"
-                )
+            # Execute the original tool directly with proper ToolContext
+            from agents.tool_context import ToolContext
+            from agents.usage import Usage
+            
+            # Convert params to JSON string for on_invoke_tool
+            input_json = json.dumps(params)
+            
+            # Create ToolContext for approved execution
+            ctx = ToolContext(
+                context=None,  # Can be enhanced with session context
+                usage=Usage(),
+                tool_name=pending_action['action_name'],
+                tool_call_id=f"approved_{action_id}"
+            )
+            
+            # Execute the tool
+            result = await original_tool.on_invoke_tool(ctx, input_json)
+            
+            # Update action status
+            pending_action['status'] = 'approved_and_executed'
+            pending_action['executed_at'] = datetime.now().isoformat()
+            pending_action['result'] = result
+            
+            # Track in database
+            await self._track_action(
+                action_name=pending_action['action_name'],
+                action_type="irreversible",
+                parameters=params,
+                result=result,
+                executed=True
+            )
+            
+            # Remove from pending list
+            self.pending_actions.remove(pending_action)
+            
+            logger.info(f"✅ Successfully executed approved action: {pending_action['action_name']}")
+            
+            return {
+                "status": "success",
+                "action_id": action_id,
+                "action_name": pending_action['action_name'],
+                "result": result
+            }
+            
         except Exception as e:
-            logger.error(f"Failed to update pattern: {e}")
+            logger.error(f"Error executing approved action {action_id}: {e}")
+            return {
+                "status": "error",
+                "action_id": action_id,
+                "error": str(e)
+            }
+    
+    async def reject_action(self, action_id: str, reason: str = "") -> Dict[str, Any]:
+        """
+        Reject a pending action.
+        
+        Args:
+            action_id: ID of the action to reject
+            reason: Optional reason for rejection
+            
+        Returns:
+            Confirmation of rejection
+        """
+        # Find and remove the pending action
+        for action in self.pending_actions:
+            if action.get("action_id") == action_id:
+                self.pending_actions.remove(action)
+                
+                logger.info(f"❌ REJECTED ACTION: {action['action_name']} ({action_id})")
+                
+                # Track rejection in database
+                await self._track_action(
+                    action_name=action['action_name'],
+                    action_type="irreversible",
+                    parameters=action.get('parameters', {}),
+                    result={"status": "rejected", "reason": reason},
+                    executed=False
+                )
+                
+                return {
+                    "status": "rejected",
+                    "action_id": action_id,
+                    "action_name": action['action_name'],
+                    "reason": reason
+                }
+        
+        return {"error": f"Action {action_id} not found in pending actions"}
+    
+    def get_pending_actions(self) -> List[Dict[str, Any]]:
+        """Get list of all pending actions awaiting approval"""
+        return self.pending_actions.copy()
+    
+    def _wrap_tools_with_two_tier(self):
+        """
+        Prepare tools for two-tier execution logic.
+        Phase 4 - Since we can't wrap tools without schema issues, we track execution in process_email.
+        
+        Returns:
+            List of original tools (interception happens at runtime)
+        """
+        # Build a map of tool names to functions for approval execution
+        self.tool_map = {}
+        for tool in self.tools:
+            tool_name = tool.name
+            # The tool itself IS callable - @function_tool decorated functions remain callable!
+            # No need to extract anything - the FunctionTool object is what we call
+            self.tool_map[tool_name] = tool
+            
+            # Classify each tool for later reference
+            action_type = self.action_classifier.classify_action(tool_name)
+            if action_type == ActionType.IRREVERSIBLE:
+                logger.info(f"  🟠 {tool_name} - REQUIRES APPROVAL")
+            else:
+                logger.info(f"  🟢 {tool_name} - AUTO-EXECUTE")
+        
+        logger.info(f"Prepared {len(self.tools)} tools for two-tier execution")
+        logger.info("Approval logic will be applied at runtime during tool call extraction")
+        
+        # Return original tools - we'll intercept execution in process_email
+        return self.tools
+    
+    def _generate_workflow_id(self) -> str:
+        """Generate a unique workflow ID"""
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        unique_id = uuid.uuid4().hex[:8]
+        return f"WF-{timestamp}-{unique_id}"
+    
+    def _generate_action_id(self) -> str:
+        """Generate a unique action ID"""
+        return f"ACT-{uuid.uuid4().hex[:12]}"
+    
+    async def _track_action(
+        self,
+        action_name: str,
+        action_category: str,
+        details: Dict[str, Any],
+        confidence: float = 0.0,
+        order_id: Optional[str] = None,
+        executed: bool = True,
+        action_type: Optional[str] = None,
+        parameters: Optional[Dict[str, Any]] = None,
+        result: Optional[Any] = None
+    ) -> str:
+        """
+        Track an action in the audit log.
+        Phase 3 - Action tracking for audit trail.
+        
+        Args:
+            action_name: Name of the action/tool
+            action_category: Category of action
+            details: Action details
+            confidence: Confidence score
+            order_id: Optional order ID
+            
+        Returns:
+            Action ID
+        """
+        action_id = self._generate_action_id()
+        
+        # Classify the action
+        action_type = self.action_classifier.classify_action(action_name)
+        
+        # Generate reasoning (simplified for now)
+        reasoning = f"Executing {action_name} as part of workflow {self.current_workflow_id}"
+        
+        try:
+            with get_db() as db:
+                # Create audit record
+                audit = ActionAudit(
+                    action_id=action_id,
+                    workflow_id=self.current_workflow_id or self._generate_workflow_id(),
+                    order_id=order_id,
+                    action_type=action_type.value,
+                    action_category=action_category,
+                    action_name=action_name,
+                    description=f"Tool call: {action_name}",
+                    details=details,
+                    can_rollback=1 if action_type == ActionType.REVERSIBLE else 0,
+                    executed=1 if executed else 0,  # Use the executed parameter
+                    executed_at=datetime.now() if executed else None,
+                    confidence=confidence,
+                    reasoning=reasoning,
+                    requires_approval=1 if action_type == ActionType.IRREVERSIBLE else 0,
+                )
+                
+                db.add(audit)
+                db.commit()
+                
+                # Track in memory
+                self.workflow_actions.append({
+                    "action_id": action_id,
+                    "action_name": action_name,
+                    "action_type": action_type.value,
+                    "timestamp": datetime.now().isoformat()
+                })
+                
+                logger.info(f"Tracked action {action_id}: {action_name} ({action_type.value})")
+                
+        except Exception as e:
+            logger.error(f"Failed to track action in audit log: {e}")
+        
+        return action_id
+    
+    def _generate_reasoning(
+        self,
+        email_data: Dict[str, Any],
+        actions_taken: List[Dict[str, Any]]
+    ) -> str:
+        """
+        Generate human-readable reasoning for actions taken.
+        Uses proposal engine's reasoning capabilities.
+        
+        Args:
+            email_data: Email information
+            actions_taken: List of actions executed
+            
+        Returns:
+            Reasoning text
+        """
+        # Build summary of actions
+        action_summary = []
+        for action in actions_taken:
+            action_summary.append(f"- {action.get('action_name', 'Unknown action')}")
+        
+        reasoning = f"""
+        Processed email from {email_data.get('from', 'unknown')} 
+        regarding {email_data.get('subject', 'no subject')}.
+        
+        Actions taken:
+        {chr(10).join(action_summary)}
+        
+        Workflow ID: {self.current_workflow_id}
+        """
+        
+        return reasoning.strip()
 
+    def get_validation_stats(self) -> Dict[str, Any]:
+        """Get validation statistics for monitoring"""
+        if hasattr(self, 'validator'):
+            return self.validator.get_workflow_summary()
+        return {}
+    
     async def learn_from_feedback(
         self, email_id: str, actual_intent: str, was_correct: bool
     ):
