@@ -1,0 +1,421 @@
+/* CSS Variables for automatic light/dark mode */
+:root {
+    --bg-primary: white;
+    --bg-secondary: #f9fafb;
+    --text-primary: #111827;
+    --text-secondary: #6b7280;
+    --border-color: #e5e7eb;
+    --card-bg: white;
+    --hover-bg: #f3f4f6;
+    --customer-card-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --ai-card-bg: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    --customer-card-border: #667eea;
+    --ai-card-border: #f093fb;
+    --focus-color: #2563eb;
+    --focus-outline: 2px solid #2563eb;
+    --focus-outline-offset: 2px;
+}
+
+/* Accessibility: Focus indicators for all interactive elements */
+button:focus,
+input:focus,
+textarea:focus,
+select:focus,
+a:focus,
+[tabindex]:focus,
+.gr-button:focus,
+.gr-input:focus,
+.gr-dropdown:focus,
+.gr-checkbox:focus,
+.gr-radio:focus,
+.gr-textbox:focus,
+.gr-number:focus {
+    outline: var(--focus-outline) !important;
+    outline-offset: var(--focus-outline-offset) !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
+}
+
+/* High contrast focus for better visibility */
+@media (prefers-contrast: high) {
+    button:focus,
+    input:focus,
+    textarea:focus,
+    select:focus,
+    a:focus,
+    [tabindex]:focus {
+        outline: 3px solid black !important;
+        outline-offset: 3px !important;
+    }
+}
+
+/* Skip to content link for screen readers */
+.skip-to-content {
+    position: absolute;
+    top: -40px;
+    left: 0;
+    background: var(--focus-color);
+    color: white;
+    padding: 8px;
+    text-decoration: none;
+    z-index: 100;
+}
+
+.skip-to-content:focus {
+    top: 0;
+}
+
+/* Screen reader only content */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-primary: #111827;
+        --bg-secondary: #1f2937;
+        --text-primary: #f9fafb;
+        --text-secondary: #d1d5db;
+        --border-color: #4b5563;
+        --card-bg: #1f2937;
+        --hover-bg: #374151;
+    }
+    
+    .card {
+        background: var(--card-bg) !important;
+        color: var(--text-primary) !important;
+    }
+}
+
+/* Queue list styling with proper contrast */
+.queue-item {
+    padding: 0.75rem;
+    margin: 0.5rem 0;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-height: 44px; /* WCAG touch target size */
+}
+
+.queue-item:hover {
+    background: var(--hover-bg);
+    border-color: var(--focus-color);
+    transform: translateX(2px);
+}
+
+.queue-item:focus {
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
+}
+
+.queue-item.selected {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: white;
+    border-color: #2563eb;
+}
+
+/* Card styling with enhanced visual hierarchy */
+.card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin: 0.5rem 0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.card-header {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 0.5rem;
+}
+
+/* Customer and AI recommendation cards with gradient backgrounds */
+.customer-card {
+    background: var(--customer-card-bg) !important;
+    color: white !important;
+    border: 2px solid var(--customer-card-border) !important;
+    padding: 1.5rem !important;
+    border-radius: 0.75rem !important;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+}
+
+.customer-card * {
+    color: white !important;
+}
+
+.ai-recommendation-card {
+    background: var(--ai-card-bg) !important;
+    color: white !important;
+    border: 2px solid var(--ai-card-border) !important;
+    padding: 1.5rem !important;
+    border-radius: 0.75rem !important;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+}
+
+.ai-recommendation-card * {
+    color: white !important;
+}
+
+/* Button styling with proper contrast and focus states */
+.action-button {
+    padding: 0.625rem 1.25rem;
+    margin: 0.25rem;
+    border-radius: 0.375rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    min-height: 44px; /* WCAG touch target */
+    min-width: 44px;
+}
+
+.approve-button {
+    background: #10b981;
+    color: white;
+    border: 2px solid #10b981;
+}
+
+.approve-button:hover:not(:disabled) {
+    background: #059669;
+    border-color: #059669;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px rgba(16, 185, 129, 0.2);
+}
+
+.approve-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.reject-button {
+    background: #ef4444;
+    color: white;
+    border: 2px solid #ef4444;
+}
+
+.reject-button:hover:not(:disabled) {
+    background: #dc2626;
+    border-color: #dc2626;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);
+}
+
+.info-button {
+    background: #3b82f6;
+    color: white;
+    border: 2px solid #3b82f6;
+}
+
+.info-button:hover:not(:disabled) {
+    background: #2563eb;
+    border-color: #2563eb;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px rgba(59, 130, 246, 0.2);
+}
+
+/* Table styling with proper contrast */
+.recommendation-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--card-bg);
+    margin-top: 1rem;
+}
+
+.recommendation-table th {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    padding: 0.75rem;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.recommendation-table td {
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-primary);
+}
+
+.recommendation-table tr:hover {
+    background: var(--hover-bg);
+}
+
+.recommendation-table tr:focus-within {
+    outline: var(--focus-outline);
+    outline-offset: -2px;
+}
+
+/* Make radio buttons more visible */
+.recommendation-table input[type="radio"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    accent-color: var(--focus-color);
+}
+
+.recommendation-table input[type="radio"]:focus {
+    outline: 2px solid var(--focus-color);
+    outline-offset: 2px;
+}
+
+/* Responsive table wrapper */
+.table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 1rem 0;
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+}
+
+/* Confidence badge styling with semantic colors */
+.confidence-badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.confidence-high-badge {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.confidence-medium-badge {
+    background: #fed7aa;
+    color: #92400e;
+}
+
+.confidence-low-badge {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/* Enhanced image modal styles */
+.image-modal-overlay {
+    display: flex !important;
+    position: fixed;
+    z-index: 999999;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.95);
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.image-modal-overlay.show {
+    opacity: 1;
+}
+
+.modal-content {
+    margin: auto;
+    display: block;
+    max-width: 90%;
+    max-height: 80vh;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+
+.close-modal {
+    position: absolute;
+    top: 20px;
+    right: 35px;
+    color: #f1f1f1;
+    font-size: 40px;
+    font-weight: bold;
+    cursor: pointer;
+    z-index: 1000000;
+    user-select: none;
+    transition: color 0.3s ease;
+}
+
+.close-modal:hover {
+    color: #fff;
+    text-shadow: 0 0 10px rgba(255,255,255,0.5);
+}
+
+/* Enhanced clickable image styles */
+.clickable-image {
+    transition: all 0.3s ease !important;
+    border: 2px solid transparent !important;
+}
+
+.clickable-image:hover {
+    transform: scale(1.05) !important;
+    border: 2px solid #3b82f6 !important;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3) !important;
+    cursor: pointer !important;
+}
+
+.clickable-image:active {
+    transform: scale(0.98) !important;
+}
+
+/* Document list styles */
+.document-list {
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 0.5rem;
+    background: #f9fafb;
+    border-radius: 4px;
+}
+
+.document-item {
+    padding: 0.5rem;
+    margin: 0.25rem 0;
+    background: white;
+    border-radius: 4px;
+    border: 1px solid #e5e7eb;
+}
+
+/* Responsive layout adjustments */
+@media (max-width: 768px) {
+    .card {
+        padding: 0.75rem;
+    }
+    
+    .card-header {
+        font-size: 1rem;
+    }
+    
+    .action-button {
+        padding: 0.5rem 1rem;
+        font-size: 0.875rem;
+    }
+    
+    /* Simplify table on mobile */
+    .recommendation-table {
+        font-size: 0.875rem;
+    }
+    
+    .recommendation-table th,
+    .recommendation-table td {
+        padding: 0.5rem;
+    }
+    
+    /* Show only essential columns in tables */
+    .dataframe th:nth-child(n+3),
+    .dataframe td:nth-child(n+3) {
+        display: none;
+    }
+}
