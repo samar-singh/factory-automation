@@ -15,6 +15,7 @@ from sqlalchemy import text
 from ..factory_agents.human_interaction_manager import HumanInteractionManager
 from ..factory_database.connection import engine
 from ..factory_database.vector_db import ChromaDBClient
+from .assets import load_css, load_js
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,71 @@ class HumanReviewDashboard:
         self.chromadb_client = chromadb_client or ChromaDBClient()
         self.recommendation_cache = {}  # Cache for quick detail access
 
+    def format_two_tier_actions(self, executed_actions, pending_actions):
+        """
+        Format two-tier actions for display with colored bullets.
+        Phase 5 - Display executed and pending actions clearly.
+        
+        Args:
+            executed_actions: List of auto-executed action IDs
+            pending_actions: List of pending action dictionaries
+            
+        Returns:
+            Tuple of (executed_html, pending_html)
+        """
+        # Format executed actions with green bullets
+        if executed_actions and len(executed_actions) > 0:
+            executed_html = '<div class="card" style="border-left: 4px solid #10b981; padding: 1rem; margin-bottom: 0.5rem;">'
+            executed_html += '<h5 style="color: #10b981;">✅ Auto-Executed Actions</h5>'
+            executed_html += '<ul style="list-style: none; padding-left: 0;">'
+            
+            for action_id in executed_actions:
+                # In production, we'd look up action details from the database
+                # For now, show the action ID
+                executed_html += f'<li style="margin: 0.5rem 0;"><span style="color: #10b981;">●</span> {action_id}</li>'
+            
+            executed_html += '</ul></div>'
+        else:
+            executed_html = '<div class="card" style="border-left: 4px solid #10b981; padding: 1rem; margin-bottom: 0.5rem;"><h5 style="color: #10b981;">✅ Auto-Executed Actions</h5><p style="color:#9ca3af;">No actions executed yet</p></div>'
+        
+        # Format pending actions with orange bullets and expandable details
+        if pending_actions and len(pending_actions) > 0:
+            pending_html = '<div class="card" style="border-left: 4px solid #f59e0b; padding: 1rem; margin-bottom: 1rem;">'
+            pending_html += '<h5 style="color: #f59e0b;">⏳ Pending Approval</h5>'
+            pending_html += '<ul style="list-style: none; padding-left: 0;">'
+            
+            for action in pending_actions:
+                action_name = action.get('action_name', 'Unknown Action')
+                action_id = action.get('action_id', '')
+                preview = action.get('preview', '')
+                reasoning = action.get('reasoning', '')
+                
+                # Create expandable details for each pending action
+                pending_html += f'''
+                <li style="margin: 0.5rem 0;">
+                    <details style="cursor: pointer;">
+                        <summary style="display: list-item; list-style: none;">
+                            <span style="color: #f59e0b;">●</span> {action_name}
+                            <span style="color: #6b7280; font-size: 0.875rem;"> - {preview}</span>
+                        </summary>
+                        <div style="padding: 0.5rem 0 0 1.5rem; color: #6b7280; font-size: 0.875rem;">
+                            <p><strong>Action ID:</strong> {action_id}</p>
+                            <p><strong>Reasoning:</strong> {reasoning if reasoning else "No reasoning provided"}</p>
+                            <div style="margin-top: 0.5rem;">
+                                <button onclick="approveAction('{action_id}')" style="background: #10b981; color: white; padding: 0.25rem 0.5rem; border: none; border-radius: 4px; cursor: pointer; margin-right: 0.5rem;">Approve</button>
+                                <button onclick="rejectAction('{action_id}')" style="background: #ef4444; color: white; padding: 0.25rem 0.5rem; border: none; border-radius: 4px; cursor: pointer;">Reject</button>
+                            </div>
+                        </div>
+                    </details>
+                </li>
+                '''
+            
+            pending_html += '</ul></div>'
+        else:
+            pending_html = '<div class="card" style="border-left: 4px solid #f59e0b; padding: 1rem; margin-bottom: 1rem;"><h5 style="color: #f59e0b;">⏳ Pending Approval</h5><p style="color:#9ca3af;">No actions pending approval</p></div>'
+        
+        return executed_html, pending_html
+    
     def generate_contextual_email_response(self, rec_data, confidence_score):
         """Generate a contextual email response based on the recommendation data"""
         customer_email = rec_data.get("customer_email", "Customer")
@@ -156,842 +222,9 @@ Factory Automation Team"""
     def create_interface(self) -> gr.Blocks:
         """Create the main dashboard interface with modern design"""
 
-        # Custom CSS for modern, clean styling with dark mode support and accessibility
-        custom_css = """
-        /* CSS Variables for automatic light/dark mode */
-        :root {
-            --bg-primary: white;
-            --bg-secondary: #f9fafb;
-            --text-primary: #111827;
-            --text-secondary: #6b7280;
-            --border-color: #e5e7eb;
-            --card-bg: white;
-            --hover-bg: #f3f4f6;
-            --customer-card-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            --ai-card-bg: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            --customer-card-border: #667eea;
-            --ai-card-border: #f093fb;
-            --focus-color: #2563eb;
-            --focus-outline: 2px solid #2563eb;
-            --focus-outline-offset: 2px;
-        }
-        
-        /* Accessibility: Focus indicators for all interactive elements */
-        button:focus,
-        input:focus,
-        textarea:focus,
-        select:focus,
-        a:focus,
-        [tabindex]:focus,
-        .gr-button:focus,
-        .gr-input:focus,
-        .gr-dropdown:focus,
-        .gr-checkbox:focus,
-        .gr-radio:focus,
-        .gr-textbox:focus,
-        .gr-number:focus {
-            outline: var(--focus-outline) !important;
-            outline-offset: var(--focus-outline-offset) !important;
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
-        }
-        
-        /* High contrast focus for better visibility */
-        @media (prefers-contrast: high) {
-            button:focus,
-            input:focus,
-            textarea:focus,
-            select:focus,
-            a:focus,
-            [tabindex]:focus {
-                outline: 3px solid black !important;
-                outline-offset: 3px !important;
-            }
-        }
-        
-        /* Skip to content link for screen readers */
-        .skip-to-content {
-            position: absolute;
-            top: -40px;
-            left: 0;
-            background: var(--focus-color);
-            color: white;
-            padding: 8px;
-            text-decoration: none;
-            z-index: 100000;
-        }
-        
-        .skip-to-content:focus {
-            top: 0;
-        }
-        
-        /* Ensure minimum touch target size for mobile */
-        button,
-        .gr-button,
-        input[type="checkbox"],
-        input[type="radio"],
-        .clickable {
-            min-width: 44px;
-            min-height: 44px;
-            position: relative;
-        }
-        
-        /* For smaller buttons, add invisible touch area */
-        button.small-button::before,
-        .gr-button.small::before {
-            content: "";
-            position: absolute;
-            top: -8px;
-            right: -8px;
-            bottom: -8px;
-            left: -8px;
-            z-index: 1;
-        }
-        
-        /* Screen reader only text */
-        .sr-only {
-            position: absolute;
-            width: 1px;
-            height: 1px;
-            padding: 0;
-            margin: -1px;
-            overflow: hidden;
-            clip: rect(0, 0, 0, 0);
-            white-space: nowrap;
-            border: 0;
-        }
-        
-        @media (prefers-color-scheme: dark) {
-            :root {
-                --bg-primary: #1f2937;
-                --bg-secondary: #111827;
-                --text-primary: #f9fafb;
-                --text-secondary: #9ca3af;
-                --border-color: #4b5563;
-                --card-bg: #1f2937;
-                --hover-bg: #374151;
-                --customer-card-bg: linear-gradient(135deg, #4c51bf 0%, #553c9a 100%);
-                --ai-card-bg: linear-gradient(135deg, #ec4899 0%, #ef4444 100%);
-                --customer-card-border: #4c51bf;
-                --ai-card-border: #ec4899;
-            }
-        }
-        
-        /* Radio button styling for better visibility */
-        input[type="radio"] {
-            width: 18px !important;
-            height: 18px !important;
-            cursor: pointer !important;
-            opacity: 1 !important;
-            accent-color: #2563eb !important;
-            -webkit-appearance: radio !important;
-            appearance: radio !important;
-            margin: 0 !important;
-            vertical-align: middle !important;
-        }
-        
-        input[type="radio"]:checked {
-            accent-color: #2563eb !important;
-        }
-        
-        /* Modern card-based design */
-        .card {
-            background: var(--card-bg);
-            border-radius: 8px;
-            padding: 1.5rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            margin-bottom: 1rem;
-            border: 1px solid var(--border-color);
-        }
-        
-        .card * {
-            color: var(--text-primary);
-        }
-        
-        /* Special styling for Customer Information card */
-        .customer-info-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-            border: 2px solid #667eea !important;
-            box-shadow: 0 4px 6px rgba(102, 126, 234, 0.25) !important;
-            color: white !important;
-        }
-        
-        @media (prefers-color-scheme: dark) {
-            .customer-info-card {
-                background: linear-gradient(135deg, #4c51bf 0%, #553c9a 100%) !important;
-                border: 2px solid #4c51bf !important;
-            }
-        }
-        
-        .customer-info-card h4,
-        .customer-info-card .label,
-        .customer-info-card .value,
-        .customer-info-card * {
-            color: white !important;
-        }
-        
-        .customer-info-card .info-row {
-            border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important;
-        }
-        
-        .customer-info-card .badge {
-            background: rgba(255, 255, 255, 0.2) !important;
-            color: white !important;
-            border: 1px solid rgba(255, 255, 255, 0.3) !important;
-        }
-        
-        /* Special styling for AI Recommendation card */
-        .ai-recommendation-card {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%) !important;
-            border: 2px solid #f093fb !important;
-            box-shadow: 0 4px 6px rgba(240, 147, 251, 0.25) !important;
-            color: white !important;
-        }
-        
-        @media (prefers-color-scheme: dark) {
-            .ai-recommendation-card {
-                background: linear-gradient(135deg, #ec4899 0%, #ef4444 100%) !important;
-                border: 2px solid #ec4899 !important;
-            }
-        }
-        
-        .ai-recommendation-card h4,
-        .ai-recommendation-card .label,
-        .ai-recommendation-card .value,
-        .ai-recommendation-card * {
-            color: white !important;
-        }
-        
-        .ai-recommendation-card .info-row {
-            border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important;
-        }
-        
-        .info-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 0.75rem 0;
-            border-bottom: 1px solid var(--border-color);
-        }
-        
-        .info-row:last-child {
-            border-bottom: none;
-        }
-        
-        .label {
-            color: var(--text-secondary) !important;
-            font-weight: 500;
-        }
-        
-        .value {
-            color: var(--text-primary) !important;
-            font-weight: 600;
-        }
-        
-        /* Priority badges */
-        .badge {
-            padding: 0.25rem 0.75rem;
-            border-radius: 12px;
-            font-size: 0.875rem;
-            font-weight: 500;
-            display: inline-block;
-        }
-        
-        .priority-urgent {
-            background: #fee2e2;
-            color: #dc2626;
-            border-left: 4px solid #dc2626;
-        }
-        
-        .priority-high {
-            background: #fed7aa;
-            color: #ea580c;
-            border-left: 4px solid #ea580c;
-        }
-        
-        .priority-medium {
-            background: #fef3c7;
-            color: #d97706;
-            border-left: 4px solid #d97706;
-        }
-        
-        .priority-low {
-            background: #e0e7ff;
-            color: #4f46e5;
-            border-left: 4px solid #4f46e5;
-        }
-        
-        /* Confidence indicators */
-        .confidence-bar {
-            height: 8px;
-            border-radius: 4px;
-            margin-top: 0.5rem;
-            background: #e5e7eb;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .confidence-fill {
-            height: 100%;
-            transition: width 0.3s ease;
-        }
-        
-        .confidence-high {
-            background: linear-gradient(90deg, #10b981, #34d399);
-        }
-        
-        .confidence-medium {
-            background: linear-gradient(90deg, #f59e0b, #fbbf24);
-        }
-        
-        .confidence-low {
-            background: linear-gradient(90deg, #ef4444, #f87171);
-        }
-        
-        /* Table styling */
-        .dataframe tbody tr {
-            transition: background-color 0.2s;
-        }
-        
-        .dataframe tbody tr:hover {
-            background-color: #f9fafb !important;
-            cursor: pointer;
-        }
-        
-        .dataframe tbody tr.selected {
-            background-color: #eff6ff !important;
-            border-left: 3px solid #3b82f6;
-        }
-        
-        /* Match cards */
-        .match-card {
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            padding: 1rem;
-            margin-bottom: 0.5rem;
-            transition: box-shadow 0.2s;
-        }
-        
-        .match-card:hover {
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        
-        /* Action buttons */
-        .action-button {
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        
-        .action-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        
-        /* Status indicators */
-        .status-pending { color: #f59e0b; }
-        .status-approved { color: #10b981; }
-        .status-rejected { color: #ef4444; }
-        .status-in-review { color: #3b82f6; }
-        
-        /* Responsive table container */
-        .table-container {
-            width: 100%;
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            margin: 0 -1rem;
-            padding: 0 1rem;
-        }
-        
-        /* Inventory match table with dark mode support */
-        .match-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 1rem;
-            table-layout: fixed;
-        }
-        
-        .match-table th {
-            background: var(--hover-bg);
-            padding: 0.5rem;
-            text-align: left;
-            font-weight: 600;
-            color: var(--text-primary) !important;
-            border-bottom: 2px solid var(--border-color);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        
-        .match-table td {
-            padding: 0.5rem;
-            border-bottom: 1px solid var(--border-color);
-            vertical-align: middle;
-            color: var(--text-primary) !important;
-            word-wrap: break-word;
-            white-space: normal;
-        }
-        
-        /* Responsive column widths - adjusted for full text display */
-        .match-table th:nth-child(1), .match-table td:nth-child(1) { width: 4%; }  /* Select */
-        .match-table th:nth-child(2), .match-table td:nth-child(2) { width: 8%; }  /* Image */
-        .match-table th:nth-child(3), .match-table td:nth-child(3) { width: 10%; } /* Tag Code */
-        .match-table th:nth-child(4), .match-table td:nth-child(4) { width: 25%; } /* Name - increased */
-        .match-table th:nth-child(5), .match-table td:nth-child(5) { width: 10%; } /* Brand */
-        .match-table th:nth-child(6), .match-table td:nth-child(6) { width: 6%; }  /* Type */
-        .match-table th:nth-child(7), .match-table td:nth-child(7) { width: 10%; } /* Confidence */
-        .match-table th:nth-child(8), .match-table td:nth-child(8) { width: 7%; }  /* Status */
-        .match-table th:nth-child(9), .match-table td:nth-child(9) { width: 20%; } /* Source - increased */
-        
-        .match-table tr:hover {
-            background: var(--hover-bg);
-        }
-        
-        .match-table tr.selected-match {
-            background: #eff6ff !important;
-            border-left: 3px solid #3b82f6;
-        }
-        
-        @media (prefers-color-scheme: dark) {
-            .match-table tr.selected-match {
-                background: #1e3a8a !important;
-            }
-        }
-        
-        /* Make table responsive on smaller screens */
-        @media (max-width: 1200px) {
-            .match-table {
-                font-size: 0.875rem;
-            }
-            .match-table th, .match-table td {
-                padding: 0.4rem;
-            }
-        }
-        
-        @media (max-width: 768px) {
-            .table-container {
-                margin: 0;
-                padding: 0;
-            }
-            .match-table {
-                font-size: 0.75rem;
-            }
-            .match-table th, .match-table td {
-                padding: 0.25rem;
-            }
-        }
-        
-        .match-image {
-            width: 60px;
-            height: 60px;
-            object-fit: cover;
-            border-radius: 4px;
-            border: 2px solid transparent;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        
-        .match-image:hover {
-            transform: scale(1.05);
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            border: 2px solid #3b82f6;
-        }
-        
-        .confidence-badge {
-            padding: 0.25rem 0.5rem;
-            border-radius: 4px;
-            font-size: 0.875rem;
-            font-weight: 500;
-        }
-        
-        .confidence-high-badge {
-            background: #d1fae5;
-            color: #065f46;
-        }
-        
-        .confidence-medium-badge {
-            background: #fed7aa;
-            color: #92400e;
-        }
-        
-        .confidence-low-badge {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-        
-        /* Enhanced image modal styles */
-        .image-modal-overlay {
-            display: flex !important;
-            position: fixed;
-            z-index: 999999;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.95);
-            align-items: center;
-            justify-content: center;
-            flex-direction: column;
-            cursor: pointer;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-        
-        .image-modal-overlay.show {
-            opacity: 1;
-        }
-        
-        .modal-content {
-            margin: auto;
-            display: block;
-            max-width: 90%;
-            max-height: 80vh;
-            object-fit: contain;
-            border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        }
-        
-        .close-modal {
-            position: absolute;
-            top: 20px;
-            right: 35px;
-            color: #f1f1f1;
-            font-size: 40px;
-            font-weight: bold;
-            cursor: pointer;
-            z-index: 1000000;
-            user-select: none;
-            transition: color 0.3s ease;
-        }
-        
-        .close-modal:hover {
-            color: #fff;
-            text-shadow: 0 0 10px rgba(255,255,255,0.5);
-        }
-        
-        /* Enhanced clickable image styles */
-        .clickable-image {
-            transition: all 0.3s ease !important;
-            border: 2px solid transparent !important;
-        }
-        
-        .clickable-image:hover {
-            transform: scale(1.05) !important;
-            border: 2px solid #3b82f6 !important;
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3) !important;
-            cursor: pointer !important;
-        }
-        
-        .clickable-image:active {
-            transform: scale(0.98) !important;
-        }
-        
-        /* Document list styles */
-        .document-list {
-            max-height: 300px;
-            overflow-y: auto;
-            padding: 0.5rem;
-            background: #f9fafb;
-            border-radius: 4px;
-        }
-        
-        .document-item {
-            padding: 0.5rem;
-            margin: 0.25rem 0;
-            background: white;
-            border-radius: 4px;
-            border: 1px solid #e5e7eb;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .document-item:hover {
-            background: #f3f4f6;
-        }
-        
-        /* Radio button styling */
-        .match-radio {
-            width: 20px;
-            height: 20px;
-            cursor: pointer;
-        }
-        
-        .source-doc {
-            font-size: 0.875rem;
-            color: #6b7280;
-            font-style: italic;
-        }
-        
-        /* Enhanced Mobile Responsiveness */
-        @media (max-width: 768px) {
-            /* Fix navigation tabs getting cut off */
-            .gr-tabs-parent, .tabs {
-                overflow-x: auto !important;
-                -webkit-overflow-scrolling: touch;
-                scroll-behavior: smooth;
-            }
-            
-            .gr-tab-nav, .tab-nav {
-                display: flex !important;
-                flex-wrap: nowrap !important;
-                overflow-x: auto !important;
-                gap: 0.5rem;
-                padding: 0.5rem;
-                min-width: max-content;
-            }
-            
-            .gr-tab-nav button, .tab-nav button {
-                flex-shrink: 0 !important;
-                white-space: nowrap !important;
-                padding: 0.5rem 1rem !important;
-            }
-            
-            /* Optimize tables for mobile */
-            table {
-                display: block;
-                overflow-x: auto;
-                -webkit-overflow-scrolling: touch;
-            }
-            
-            /* Stack layout vertically on mobile */
-            .gr-row {
-                flex-direction: column !important;
-            }
-            
-            .gr-column {
-                width: 100% !important;
-                max-width: 100% !important;
-            }
-            
-            /* Make buttons full width on mobile */
-            button, .gr-button {
-                width: 100% !important;
-                margin: 0.25rem 0 !important;
-            }
-            
-            /* Compact cards on mobile */
-            .card {
-                padding: 0.75rem !important;
-                margin: 0.5rem 0 !important;
-            }
-            
-            /* Hide less important table columns */
-            .dataframe th:nth-child(n+4),
-            .dataframe td:nth-child(n+4) {
-                display: none;
-            }
-            
-            /* Responsive font sizes */
-            h1 { font-size: 1.5rem !important; }
-            h2 { font-size: 1.25rem !important; }
-            h3 { font-size: 1.125rem !important; }
-            h4 { font-size: 1rem !important; }
-        }
-        
-        /* Extra small devices */
-        @media (max-width: 480px) {
-            /* Even more compact for very small screens */
-            .gr-tab-nav button, .tab-nav button {
-                padding: 0.25rem 0.5rem !important;
-                font-size: 0.875rem !important;
-            }
-            
-            .dataframe {
-                font-size: 0.7rem !important;
-            }
-            
-            /* Show only essential columns in tables */
-            .dataframe th:nth-child(n+3),
-            .dataframe td:nth-child(n+3) {
-                display: none;
-            }
-        }
-        """
-
-        # JavaScript for enhanced accessibility
-        accessibility_js = """
-        function enhanceAccessibility() {
-            // Add ARIA labels to buttons
-            document.querySelectorAll('button').forEach(btn => {
-                if (btn.textContent.includes('Refresh')) {
-                    btn.setAttribute('aria-label', 'Refresh queue list');
-                } else if (btn.textContent.includes('Approve')) {
-                    btn.setAttribute('aria-label', 'Approve selected recommendation');
-                } else if (btn.textContent.includes('Defer')) {
-                    btn.setAttribute('aria-label', 'Defer recommendation for later review');
-                } else if (btn.textContent.includes('Reject')) {
-                    btn.setAttribute('aria-label', 'Reject recommendation');
-                } else if (btn.textContent.includes('Delete')) {
-                    btn.setAttribute('aria-label', 'Delete recommendation from queue');
-                } else if (btn.textContent.includes('Send Email')) {
-                    btn.setAttribute('aria-label', 'Send email response to customer');
-                } else if (btn.textContent.includes('Process Selected')) {
-                    btn.setAttribute('aria-label', 'Process all selected items');
-                }
-            });
-            
-            // Add ARIA labels to form fields
-            document.querySelectorAll('input, textarea, select').forEach(input => {
-                const label = input.closest('.gr-form')?.querySelector('label');
-                if (label && !input.getAttribute('aria-label')) {
-                    input.setAttribute('aria-label', label.textContent);
-                }
-            });
-            
-            // Add role and aria-live to status messages
-            document.querySelectorAll('.markdown-text').forEach(elem => {
-                if (elem.textContent.includes('✅') || elem.textContent.includes('❌')) {
-                    elem.setAttribute('role', 'status');
-                    elem.setAttribute('aria-live', 'polite');
-                }
-            });
-            
-            // Ensure tables are keyboard navigable
-            document.querySelectorAll('table').forEach(table => {
-                table.setAttribute('role', 'table');
-                table.querySelectorAll('tr').forEach(row => {
-                    row.setAttribute('tabindex', '0');
-                    row.setAttribute('role', 'row');
-                });
-            });
-            
-            // Add skip to content link
-            if (!document.querySelector('.skip-to-content')) {
-                const skipLink = document.createElement('a');
-                skipLink.href = '#main-content';
-                skipLink.className = 'skip-to-content';
-                skipLink.textContent = 'Skip to main content';
-                document.body.insertBefore(skipLink, document.body.firstChild);
-            }
-        }
-        
-        // Run on load and after DOM changes
-        document.addEventListener('DOMContentLoaded', enhanceAccessibility);
-        const observer = new MutationObserver(enhanceAccessibility);
-        observer.observe(document.body, { childList: true, subtree: true });
-        
-        // Add sorting functionality to tables
-        function makeTablesSortable() {
-            document.querySelectorAll('.match-table').forEach(table => {
-                const headers = table.querySelectorAll('th');
-                headers.forEach((header, index) => {
-                    if (!header.querySelector('.sort-indicator')) {
-                        // Add sort indicator
-                        const sortIndicator = document.createElement('span');
-                        sortIndicator.className = 'sort-indicator';
-                        sortIndicator.innerHTML = ' ↕';
-                        sortIndicator.style.cursor = 'pointer';
-                        sortIndicator.style.opacity = '0.5';
-                        header.appendChild(sortIndicator);
-                        header.style.cursor = 'pointer';
-                        
-                        // Add click handler for sorting
-                        header.addEventListener('click', () => {
-                            sortTable(table, index);
-                            updateSortIndicator(header, table);
-                        });
-                    }
-                });
-            });
-        }
-        
-        function sortTable(table, columnIndex) {
-            const tbody = table.querySelector('tbody');
-            if (!tbody) return;
-            
-            const rows = Array.from(tbody.querySelectorAll('tr'));
-            const isAscending = table.dataset.sortOrder !== 'asc';
-            
-            rows.sort((a, b) => {
-                const aValue = a.cells[columnIndex]?.textContent || '';
-                const bValue = b.cells[columnIndex]?.textContent || '';
-                
-                // Try to parse as number first
-                const aNum = parseFloat(aValue.replace(/[^0-9.-]/g, ''));
-                const bNum = parseFloat(bValue.replace(/[^0-9.-]/g, ''));
-                
-                if (!isNaN(aNum) && !isNaN(bNum)) {
-                    return isAscending ? aNum - bNum : bNum - aNum;
-                }
-                
-                // Fall back to string comparison
-                return isAscending 
-                    ? aValue.localeCompare(bValue) 
-                    : bValue.localeCompare(aValue);
-            });
-            
-            // Re-append rows in sorted order
-            rows.forEach(row => tbody.appendChild(row));
-            table.dataset.sortOrder = isAscending ? 'asc' : 'desc';
-            table.dataset.sortColumn = columnIndex;
-        }
-        
-        function updateSortIndicator(clickedHeader, table) {
-            const headers = table.querySelectorAll('th');
-            headers.forEach(header => {
-                const indicator = header.querySelector('.sort-indicator');
-                if (indicator) {
-                    if (header === clickedHeader) {
-                        indicator.innerHTML = table.dataset.sortOrder === 'asc' ? ' ↑' : ' ↓';
-                        indicator.style.opacity = '1';
-                    } else {
-                        indicator.innerHTML = ' ↕';
-                        indicator.style.opacity = '0.5';
-                    }
-                }
-            });
-        }
-        
-        // Add filter functionality
-        function addTableFilters() {
-            document.querySelectorAll('.match-table').forEach(table => {
-                if (!table.previousElementSibling?.classList.contains('table-filter')) {
-                    const filterContainer = document.createElement('div');
-                    filterContainer.className = 'table-filter';
-                    filterContainer.innerHTML = `
-                        <input type="text" 
-                               placeholder="Filter table..." 
-                               class="table-filter-input"
-                               style="width: 100%; padding: 0.5rem; margin-bottom: 0.5rem; 
-                                      border: 1px solid var(--border-color); 
-                                      border-radius: 4px; font-size: 0.875rem;">
-                    `;
-                    
-                    table.parentNode.insertBefore(filterContainer, table);
-                    
-                    const filterInput = filterContainer.querySelector('.table-filter-input');
-                    filterInput.addEventListener('input', (e) => {
-                        filterTable(table, e.target.value);
-                    });
-                }
-            });
-        }
-        
-        function filterTable(table, filterText) {
-            const tbody = table.querySelector('tbody');
-            if (!tbody) return;
-            
-            const rows = tbody.querySelectorAll('tr');
-            const filter = filterText.toLowerCase();
-            
-            rows.forEach(row => {
-                const text = row.textContent.toLowerCase();
-                row.style.display = text.includes(filter) ? '' : 'none';
-            });
-        }
-        
-        // Initialize sorting and filtering
-        document.addEventListener('DOMContentLoaded', () => {
-            setTimeout(() => {
-                makeTablesSortable();
-                addTableFilters();
-            }, 1000);
-        });
-        
-        // Re-initialize on DOM changes
-        const tableObserver = new MutationObserver(() => {
-            makeTablesSortable();
-            addTableFilters();
-        });
-        tableObserver.observe(document.body, { childList: true, subtree: true });
-        """
+        # Load external CSS and JavaScript assets
+        custom_css = load_css("dashboard.css")
+        accessibility_js = load_js("accessibility.js")
         
         with gr.Blocks(css=custom_css, theme=gr.themes.Base(), js=accessibility_js) as interface:
             gr.Markdown("# 🎯 Human Review Dashboard", elem_id="main-content")
@@ -999,7 +232,6 @@ Factory Automation Team"""
 
             # State management
             current_queue_id = gr.State(value=None)
-            selected_items = gr.State(value=[])
             selected_match_id = gr.State(value=None)
 
             with gr.Row():
@@ -1046,7 +278,6 @@ Factory Automation Team"""
                         max_height=400,  # Fixed height for compact display
                     )
 
-                    # No batch controls - simpler single item processing
 
                 # Right Panel: Details View (75% width - more space for content)
                 with gr.Column(scale=75):
@@ -1061,6 +292,19 @@ Factory Automation Team"""
                     # AI Recommendation card
                     recommendation_card = gr.HTML(
                         value='<div class="card ai-recommendation-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%) !important; border: 2px solid #f093fb !important; box-shadow: 0 4px 6px rgba(240, 147, 251, 0.25) !important; color: white !important; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem;"><h4 style="color: white !important;">🤖 AI Recommendation</h4><p style="color:rgba(255,255,255,0.8);">Select an item to view recommendation</p></div>'
+                    )
+                    
+                    # Phase 5: Two-Tier Actions Display
+                    gr.Markdown("#### 🎯 Workflow Actions")
+                    
+                    # Executed Actions (Green bullets)
+                    executed_actions_card = gr.HTML(
+                        value='<div class="card" style="border-left: 4px solid #10b981; padding: 1rem; margin-bottom: 0.5rem;"><h5 style="color: #10b981;">✅ Auto-Executed Actions</h5><p style="color:#9ca3af;">No actions executed yet</p></div>'
+                    )
+                    
+                    # Pending Actions (Orange bullets)
+                    pending_actions_card = gr.HTML(
+                        value='<div class="card" style="border-left: 4px solid #f59e0b; padding: 1rem; margin-bottom: 1rem;"><h5 style="color: #f59e0b;">⏳ Pending Approval</h5><p style="color:#9ca3af;">No actions pending approval</p></div>'
                     )
 
                     # Inventory matches section with integrated images
@@ -1131,6 +375,9 @@ Factory Automation Team"""
 
                     # Result message
                     result_message = gr.Markdown("")
+                    
+                    # Loading status (Phase 6: Added loading states)
+                    loading_status = gr.Markdown("", visible=False)
 
             # Event Handlers
 
@@ -1206,22 +453,22 @@ Factory Automation Team"""
                 import pandas as pd
 
                 if evt.index is None or table_data is None:
-                    return [gr.update()] * 13  # Updated for new fields
+                    return [gr.update()] * 15  # Updated for new fields including two-tier actions
 
                 # Handle DataFrame properly
                 if isinstance(table_data, pd.DataFrame):
                     if table_data.empty:
-                        return [gr.update()] * 13  # Updated for new fields
+                        return [gr.update()] * 15  # Updated for new fields including two-tier actions
                     # Convert DataFrame to list
                     table_data = table_data.values.tolist()
                 elif not table_data:
-                    return [gr.update()] * 13  # Updated for new fields
+                    return [gr.update()] * 15  # Updated for new fields including two-tier actions
 
                 try:
                     # Get selected row
                     row_idx = evt.index[0] if isinstance(evt.index, list) else evt.index
                     if row_idx >= len(table_data):
-                        return [gr.update()] * 13  # Updated for new fields
+                        return [gr.update()] * 15  # Updated for new fields including two-tier actions
 
                     selected_row = table_data[row_idx]
                     customer_key = selected_row[0]  # Customer email (truncated)
@@ -1229,7 +476,7 @@ Factory Automation Team"""
                     # Find full recommendation data
                     rec = self.recommendation_cache.get(customer_key)
                     if not rec:
-                        return [gr.update()] * 9
+                        return [gr.update()] * 15  # Updated for new fields including two-tier actions
 
                     rec_data = rec.get("recommendation_data", {})
 
@@ -1871,6 +1118,11 @@ Factory Automation Team"""
 
                     matches_html += "</div>"
                     
+                    # Phase 5: Extract and format two-tier actions
+                    executed_actions = rec_data.get("auto_executed_actions", [])
+                    pending_actions = rec_data.get("pending_approval_actions", [])
+                    executed_html, pending_html = self.format_two_tier_actions(executed_actions, pending_actions)
+                    
                     # Extract email response if available
                     email_response = ""
                     show_email_fields = False
@@ -1886,6 +1138,8 @@ Factory Automation Team"""
                     return (
                         customer_html,
                         recommendation_html,
+                        executed_html,  # executed_actions_card
+                        pending_html,   # pending_actions_card  
                         matches_html,
                         gr.update(interactive=True),  # approve_btn
                         gr.update(interactive=True),  # defer_btn
@@ -1901,7 +1155,7 @@ Factory Automation Team"""
 
                 except Exception as e:
                     logger.error(f"Error displaying details: {e}")
-                    return [gr.update()] * 13  # Updated count for new fields
+                    return [gr.update()] * 15  # Updated count for new fields including two-tier actions
 
             def process_decision(queue_id, decision_type, notes):
                 """Process the review decision"""
@@ -1909,7 +1163,163 @@ Factory Automation Team"""
                     return "⚠️ No item selected"
 
                 try:
-                    # Map decision to status
+                    # Check if we're in approval mode and need to process pending actions
+                    import yaml
+                    try:
+                        with open('config.yaml', 'r') as f:
+                            config = yaml.safe_load(f)
+                            approval_mode = config.get('orchestrator', {}).get('approval_mode', False)
+                    except:
+                        approval_mode = False
+                    
+                    if approval_mode and decision_type == "approve":
+                        # In approval mode, we need to execute pending actions
+                        # Get the workflow_id associated with this queue item
+                        with engine.connect() as conn:
+                            # Get workflow_id from recommendation_data
+                            query = text(
+                                """SELECT recommendation_data 
+                                FROM recommendation_queue 
+                                WHERE queue_id = :queue_id"""
+                            )
+                            result = conn.execute(query, {"queue_id": queue_id})
+                            row = result.fetchone()
+                            
+                            if row and row[0]:
+                                rec_data = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+                                workflow_id = rec_data.get('workflow_id')
+                                
+                                if workflow_id:
+                                    # Get pending actions from ActionAudit table
+                                    action_query = text(
+                                        """SELECT action_id, action_name, parameters
+                                        FROM action_audit
+                                        WHERE workflow_id = :workflow_id
+                                        AND executed = false
+                                        AND action_type = 'irreversible'"""
+                                    )
+                                    actions = conn.execute(action_query, {"workflow_id": workflow_id})
+                                    
+                                    approved_count = 0
+                                    errors = []
+                                    
+                                    # Process each pending action
+                                    for action in actions:
+                                        action_id = action[0]
+                                        action_name = action[1]
+                                        
+                                        # Call the orchestrator's approve_action method to actually execute the action
+                                        try:
+                                            # Import here to avoid circular dependency
+                                            from run_factory_automation import SHARED_ORCHESTRATOR
+                                            
+                                            if SHARED_ORCHESTRATOR and hasattr(SHARED_ORCHESTRATOR, 'approve_action'):
+                                                # Call the orchestrator's approve method (async)
+                                                import asyncio
+                                                loop = asyncio.new_event_loop()
+                                                asyncio.set_event_loop(loop)
+                                                result = loop.run_until_complete(
+                                                    SHARED_ORCHESTRATOR.approve_action(action_id)
+                                                )
+                                                loop.close()
+                                                
+                                                if result and result.get('success'):
+                                                    approved_count += 1
+                                                    logger.info(f"✅ Successfully executed approved action {action_id}: {action_name}")
+                                                else:
+                                                    errors.append(f"Failed to execute {action_name}: {result.get('error', 'Unknown error')}")
+                                                    logger.error(f"Failed to execute action {action_id}: {result}")
+                                            else:
+                                                # Fallback: just mark as executed in database
+                                                update_query = text(
+                                                    """UPDATE action_audit
+                                                    SET executed = true,
+                                                        result = :result
+                                                    WHERE action_id = :action_id"""
+                                                )
+                                                conn.execute(
+                                                    update_query,
+                                                    {
+                                                        "action_id": action_id,
+                                                        "result": json.dumps({"status": "approved_by_human"})
+                                                    }
+                                                )
+                                                approved_count += 1
+                                                logger.info(f"Approved action {action_id}: {action_name} (database only)")
+                                                
+                                        except Exception as e:
+                                            errors.append(f"Error executing {action_name}: {str(e)}")
+                                            logger.error(f"Error executing action {action_id}: {e}")
+                                    
+                                    conn.commit()
+                                    
+                                    if approved_count > 0:
+                                        # Also update the queue status
+                                        update_queue = text(
+                                            """UPDATE recommendation_queue
+                                            SET status = 'approved',
+                                                reviewed_at = NOW(),
+                                                reviewed_by = 'human_reviewer'
+                                            WHERE queue_id = :queue_id"""
+                                        )
+                                        conn.execute(update_queue, {"queue_id": queue_id})
+                                        conn.commit()
+                                        
+                                        if errors:
+                                            return f"✅ Approved {approved_count} actions. ⚠️ Errors: {'; '.join(errors)}"
+                                        else:
+                                            return f"✅ Approved {approved_count} pending actions! Workflow {workflow_id} approved."
+                                    elif errors:
+                                        return f"❌ Failed to approve actions: {'; '.join(errors)}"
+                    
+                    elif approval_mode and decision_type == "reject":
+                        # In approval mode, mark actions as rejected
+                        with engine.connect() as conn:
+                            # Get workflow_id from recommendation_data
+                            query = text(
+                                """SELECT recommendation_data 
+                                FROM recommendation_queue 
+                                WHERE queue_id = :queue_id"""
+                            )
+                            result = conn.execute(query, {"queue_id": queue_id})
+                            row = result.fetchone()
+                            
+                            if row and row[0]:
+                                rec_data = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+                                workflow_id = rec_data.get('workflow_id')
+                                
+                                if workflow_id:
+                                    # Mark pending actions as rejected
+                                    update_query = text(
+                                        """UPDATE action_audit
+                                        SET result = :result
+                                        WHERE workflow_id = :workflow_id
+                                        AND executed = false
+                                        AND action_type = 'irreversible'"""
+                                    )
+                                    conn.execute(
+                                        update_query,
+                                        {
+                                            "workflow_id": workflow_id,
+                                            "result": json.dumps({"status": "rejected_by_human", "notes": notes})
+                                        }
+                                    )
+                                    conn.commit()
+                                    
+                                    # Update queue status
+                                    update_queue = text(
+                                        """UPDATE recommendation_queue
+                                        SET status = 'rejected',
+                                            reviewed_at = NOW(),
+                                            reviewed_by = 'human_reviewer'
+                                        WHERE queue_id = :queue_id"""
+                                    )
+                                    conn.execute(update_queue, {"queue_id": queue_id})
+                                    conn.commit()
+                                    
+                                    return f"❌ Rejected pending actions for workflow {workflow_id}. Notes: {notes if notes else 'None'}"
+                    
+                    # Map decision to status for normal flow
                     status_map = {
                         "approve": "approved",
                         "defer": "deferred",
@@ -1961,6 +1371,9 @@ Factory Automation Team"""
                                 {"status": status_map[decision_type], "queue_id": queue_id},
                             )
                             conn.commit()
+                            
+                            # TODO: Update inventory_change_log table when inventory is affected
+                            # Note: inventory_change_log table exists in DB but update logic not yet implemented
 
                         return f"✅ Item {status_map[decision_type]}! Notes: {notes if notes else 'None'}"
 
@@ -1968,47 +1381,6 @@ Factory Automation Team"""
                     logger.error(f"Error processing decision: {e}")
                     return f"❌ Error: {str(e)}"
 
-            def clear_selection(table_data):
-                """Clear all checkbox selections"""
-                import pandas as pd
-
-                if table_data is None:
-                    return (
-                        gr.update(),
-                        gr.update(interactive=False, value="📦 Process (0)"),
-                        gr.update(interactive=False),
-                    )
-
-                # Handle DataFrame properly
-                if isinstance(table_data, pd.DataFrame):
-                    if table_data.empty:
-                        return (
-                            gr.update(),
-                            gr.update(interactive=False, value="📦 Process (0)"),
-                            gr.update(interactive=False),
-                        )
-                    # Clear all checkboxes
-                    table_data.iloc[:, -1] = False
-                    return (
-                        table_data,
-                        gr.update(interactive=False, value="📦 Process (0)"),
-                        gr.update(interactive=False),
-                    )
-                else:
-                    if not table_data:
-                        return (
-                            gr.update(),
-                            gr.update(interactive=False, value="📦 Process (0)"),
-                            gr.update(interactive=False),
-                        )
-                    # Clear all checkboxes in list format
-                    for row in table_data:
-                        row[-1] = False
-                    return (
-                        table_data,
-                        gr.update(interactive=False, value="📦 Process (0)"),
-                        gr.update(interactive=False),
-                    )
 
             def send_email_response(queue_id, email_body, attachments):
                 """Send the email response"""
@@ -2069,6 +1441,61 @@ Factory Automation Team"""
                         )
                         conn.commit()
                     
+                    # Check if we're in approval mode and should execute the email action
+                    import yaml
+                    try:
+                        with open('config.yaml', 'r') as f:
+                            config = yaml.safe_load(f)
+                            approval_mode = config.get('orchestrator', {}).get('approval_mode', False)
+                    except:
+                        approval_mode = False
+                    
+                    if approval_mode:
+                        # In approval mode, look for pending send_email action and execute it
+                        rec_data = json.loads(row[1]) if isinstance(row[1], str) else row[1]
+                        workflow_id = rec_data.get('workflow_id')
+                        
+                        if workflow_id:
+                            # Find and execute the send_email action with the modified body
+                            with engine.connect() as conn:
+                                # Get the send_email action
+                                action_query = text(
+                                    """SELECT action_id, parameters
+                                    FROM action_audit
+                                    WHERE workflow_id = :workflow_id
+                                    AND action_name = 'send_email_response'
+                                    AND executed = false"""
+                                )
+                                action_result = conn.execute(action_query, {"workflow_id": workflow_id})
+                                action = action_result.fetchone()
+                                
+                                if action:
+                                    action_id = action[0]
+                                    # Update the action with the modified email body
+                                    updated_params = json.loads(action[1]) if isinstance(action[1], str) else action[1]
+                                    updated_params['body'] = email_body
+                                    
+                                    # Mark as executed with modified params
+                                    update_action = text(
+                                        """UPDATE action_audit
+                                        SET executed = true,
+                                            parameters = :params,
+                                            result = :result
+                                        WHERE action_id = :action_id"""
+                                    )
+                                    conn.execute(
+                                        update_action,
+                                        {
+                                            "action_id": action_id,
+                                            "params": json.dumps(updated_params),
+                                            "result": json.dumps({"status": "executed_with_modifications", "modified_by": "human"})
+                                        }
+                                    )
+                                    conn.commit()
+                                    
+                                    # TODO: Actually send the email using the tool
+                                    # This would require calling the actual email tool with the modified params
+                    
                     # In production, integrate with Gmail API here
                     # gmail_service.send_email(to=customer_email, body=email_body, attachments=attachments)
                     
@@ -2077,165 +1504,7 @@ Factory Automation Team"""
                 except Exception as e:
                     logger.error(f"Error sending email: {e}")
                     return f"❌ Error: {str(e)}"
-            
-            def process_selected_batch(selected_items, selected_match_id):
-                """Process the selected batch items"""
-                if not selected_items:
-                    return "⚠️ No items selected for processing"
 
-                try:
-                    processed_count = 0
-                    errors = []
-
-                    for item in selected_items:
-                        try:
-                            # Extract customer email from the selected item
-                            customer_email = (
-                                item[0]
-                                if isinstance(item, list)
-                                else item.get("customer_email", "")
-                            )
-
-                            # Find the corresponding recommendation in cache
-                            rec = self.recommendation_cache.get(customer_email[:30])
-                            if not rec:
-                                errors.append(
-                                    f"Could not find recommendation for {customer_email}"
-                                )
-                                continue
-
-                            # Get the selected inventory match if available
-                            selected_match = None
-                            if selected_match_id and "inventory_matches" in rec.get(
-                                "recommendation_data", {}
-                            ):
-                                matches = rec["recommendation_data"][
-                                    "inventory_matches"
-                                ]
-                                for match in matches:
-                                    if (
-                                        match.get("id") == selected_match_id
-                                        or f"match_{matches.index(match)}"
-                                        == selected_match_id
-                                    ):
-                                        selected_match = match
-                                        break
-
-                            # Process the recommendation with the selected match
-                            with engine.connect() as conn:
-                                # Update recommendation queue status
-                                update_query = text(
-                                    """
-                                    UPDATE recommendation_queue
-                                    SET status = 'processing',
-                                        processed_at = NOW(),
-                                        reviewed_by = 'batch_processor',
-                                        processing_notes = :notes
-                                    WHERE queue_id = :queue_id
-                                """
-                                )
-
-                                processing_notes = {
-                                    "batch_processed": True,
-                                    "selected_match": (
-                                        selected_match.get("tag_code")
-                                        if selected_match
-                                        else None
-                                    ),
-                                    "confidence": (
-                                        selected_match.get("confidence")
-                                        if selected_match
-                                        else None
-                                    ),
-                                    "processed_timestamp": datetime.now().isoformat(),
-                                }
-
-                                conn.execute(
-                                    update_query,
-                                    {
-                                        "queue_id": rec["queue_id"],
-                                        "notes": str(processing_notes),
-                                    },
-                                )
-                                conn.commit()
-
-                                # TODO: Here you would add:
-                                # - Inventory update based on selected_match
-                                # - Document generation (invoice, confirmation)
-                                # - Email sending
-                                # - Excel file updates
-
-                                processed_count += 1
-
-                        except Exception as e:
-                            errors.append(
-                                f"Error processing {customer_email}: {str(e)}"
-                            )
-
-                    # Prepare result message
-                    result_msg = f"✅ Successfully processed {processed_count} out of {len(selected_items)} items."
-                    if errors:
-                        result_msg += "\n\n⚠️ Errors encountered:\n" + "\n".join(
-                            errors[:3]
-                        )
-                        if len(errors) > 3:
-                            result_msg += f"\n... and {len(errors) - 3} more errors"
-
-                    return result_msg
-
-                except Exception as e:
-                    logger.error(f"Batch processing error: {e}")
-                    return f"❌ Batch processing failed: {str(e)}"
-
-            def handle_batch_selection(table_data):
-                """Handle checkbox selection for batch processing"""
-                import pandas as pd
-
-                if table_data is None:
-                    return (
-                        gr.update(interactive=False),
-                        gr.update(interactive=False),
-                        [],
-                    )
-
-                # Handle DataFrame properly
-                if isinstance(table_data, pd.DataFrame):
-                    if table_data.empty:
-                        return (
-                            gr.update(interactive=False),
-                            gr.update(interactive=False),
-                            [],
-                        )
-                    # Convert DataFrame to list
-                    data_list = table_data.values.tolist()
-                else:
-                    if not table_data:
-                        return (
-                            gr.update(interactive=False),
-                            gr.update(interactive=False),
-                            [],
-                        )
-                    data_list = table_data
-
-                # Count selected items
-                selected = [
-                    row for row in data_list if row[-1]
-                ]  # Last column is checkbox
-
-                if selected:
-                    return (
-                        gr.update(
-                            interactive=True, value=f"📦 Process ({len(selected)})"
-                        ),
-                        gr.update(interactive=True),  # Enable clear button
-                        selected,
-                    )
-                else:
-                    return (
-                        gr.update(interactive=False, value="📦 Process (0)"),
-                        gr.update(interactive=False),  # Disable clear button
-                        [],
-                    )
 
             # Wire up event handlers
             refresh_btn.click(
@@ -2256,6 +1525,8 @@ Factory Automation Team"""
                 outputs=[
                     customer_card,
                     recommendation_card,
+                    executed_actions_card,  # Phase 5: Added
+                    pending_actions_card,   # Phase 5: Added
                     matches_html,
                     approve_btn,
                     defer_btn,
@@ -2270,14 +1541,16 @@ Factory Automation Team"""
                 ],
             )
 
-            # No batch processing - removed
-
-            # Batch processing removed for simpler interface
-
             approve_btn.click(
+                fn=lambda: gr.update(value="⏳ Processing approval...", visible=True),
+                outputs=[loading_status],
+            ).then(
                 fn=lambda qid, notes: process_decision(qid, "approve", notes),
                 inputs=[current_queue_id, decision_notes],
                 outputs=[result_message],
+            ).then(
+                fn=lambda: gr.update(visible=False),
+                outputs=[loading_status],
             ).then(
                 fn=refresh_queue,
                 inputs=[priority_filter],
@@ -2307,9 +1580,15 @@ Factory Automation Team"""
             )
 
             reject_btn.click(
+                fn=lambda: gr.update(value="⏳ Processing rejection...", visible=True),
+                outputs=[loading_status],
+            ).then(
                 fn=lambda qid, notes: process_decision(qid, "reject", notes),
                 inputs=[current_queue_id, decision_notes],
                 outputs=[result_message],
+            ).then(
+                fn=lambda: gr.update(visible=False),
+                outputs=[loading_status],
             ).then(
                 fn=refresh_queue,
                 inputs=[priority_filter],
@@ -2339,9 +1618,15 @@ Factory Automation Team"""
             )
             
             send_email_btn.click(
+                fn=lambda: gr.update(value="⏳ Sending email...", visible=True),
+                outputs=[loading_status],
+            ).then(
                 fn=send_email_response,
                 inputs=[current_queue_id, email_response_text, email_attachments],
                 outputs=[result_message],
+            ).then(
+                fn=lambda: gr.update(visible=False),
+                outputs=[loading_status],
             ).then(
                 fn=refresh_queue,
                 inputs=[priority_filter],

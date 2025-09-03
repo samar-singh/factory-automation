@@ -1,0 +1,40 @@
+
+╔════════════════════════════════════════════════════════════╗
+║                                                            ║
+║     🏭 FACTORY AUTOMATION SYSTEM v2.0                     ║
+║     Intelligent Order Processing with Human Review        ║
+║                                                            ║
+╠════════════════════════════════════════════════════════════╣
+║                                                            ║
+║  Components:                                               ║
+║  • AI Orchestrator (GPT-4)                                ║
+║  • RAG Search (ChromaDB + Stella-400M)                    ║
+║  • Human Review System (60-80% confidence)                ║
+║  • Gmail Integration (Mock mode for testing)              ║
+║  • Real-time Dashboard                                    ║
+║                                                            ║
+╚════════════════════════════════════════════════════════════╝
+    
+✅ Environment variables configured
+
+📅 Starting at: 2025-09-01 22:28:05
+2025-09-01 22:28:05,540 - factory_automation.factory_agents.action_classifier - INFO - Initialized ActionClassifier with 20 irreversible actions
+🚀 Starting orchestrator...
+2025-09-01 22:28:07,791 - factory_automation.factory_database.vector_db - INFO - ChromaDB initialized at ./chroma_data
+2025-09-01 22:28:07,791 - factory_automation.factory_agents.orchestrator_with_human - INFO - Using V3 Orchestrator with true approval capability (direct API)
+2025-09-01 22:28:07,791 - factory_automation.factory_agents.orchestrator_v3_agentic - INFO - Monitoring 1 business emails with descriptions
+2025-09-01 22:28:07,791 - factory_automation.factory_agents.orchestrator_v3_agentic - INFO -   trimsblr@yahoo.co.in: General inquiries and mixed communications. Receiv...
+2025-09-01 22:28:07,791 - factory_automation.factory_agents.orchestrator_v3_agentic - INFO - Mock Gmail disabled - no automatic email processing
+2025-09-01 22:28:07,813 - factory_automation.factory_agents.human_interaction_manager - INFO - Initialized Human Interaction Manager with database queue support
+2025-09-01 22:28:07,813 - factory_automation.factory_agents.visual_similarity_search - INFO - Loading CLIP model for visual similarity search...
+2025-09-01 22:28:09,171 - factory_automation.factory_agents.visual_similarity_search - INFO - CLIP model loaded on cpu
+2025-09-01 22:28:09,193 - factory_automation.factory_agents.action_classifier - INFO - Initialized ActionClassifier with 20 irreversible actions
+2025-09-01 22:28:09,193 - factory_automation.factory_agents.two_tier_executor - INFO - Initialized Two-Tier Executor
+2025-09-01 22:28:09,193 - factory_automation.factory_agents.validation_agent - INFO - Initialized ValidationAgent with 15 rules
+2025-09-01 22:28:09,193 - factory_automation.factory_agents.validation_agent - INFO - ValidationAgent strict mode set to: True
+2025-09-01 22:28:09,193 - factory_automation.factory_agents.orchestrator_v3_agentic - INFO - Initialized ValidationAgent for tool call validation
+2025-09-01 22:28:09,193 - factory_automation.factory_rag.embeddings_config - INFO - Loading stella-400m: Top performing, 400M params, best accuracy
+2025-09-01 22:28:09,193 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: dunzhang/stella_en_400M_v5
+❌ Orchestrator failed to initialize
+2025-09-01 22:28:15,368 - openai.agents - DEBUG - Shutting down trace provider
+2025-09-01 22:28:15,368 - openai.agents - DEBUG - Shutting down trace processor <agents.tracing.processors.BatchTraceProcessor object at 0x1052d9cd0>

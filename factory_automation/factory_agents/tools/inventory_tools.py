@@ -32,10 +32,27 @@ class InventoryTools:
         # Inventory search tool
         @function_tool(
             name_override="search_inventory" if self.mode == "execute" else "search_inventory_for_proposal",
-            description_override="Search inventory using semantic similarity in ChromaDB" if self.mode == "execute" else "Search inventory to enrich proposal with accurate data. Does not reserve or modify inventory.",
+            description_override="Search inventory using semantic similarity in ChromaDB. Use AFTER email classification to find matching products. Do NOT use before understanding what the customer needs." if self.mode == "execute" else "Search inventory to enrich proposal with accurate data. Does not reserve or modify inventory. Use AFTER email analysis.",
         )
-        def search_inventory(query: str, min_quantity: int = 0, limit: int = 5) -> str:
-            """Search ChromaDB for matching inventory"""
+        async def search_inventory(query: str, min_quantity: int = 0, limit: int = 5) -> str:
+            """Search ChromaDB inventory collection for products matching the query.
+            
+            This tool searches the vector database for inventory items that match the
+            given query using semantic similarity. Use this AFTER email classification
+            to find products that match customer requirements.
+            
+            Args:
+                query: Search query describing what to find (e.g., "black woven labels size 32", "Allen Solly hang tags")
+                min_quantity: Minimum stock quantity required (default 0, filters items with insufficient stock)
+                limit: Maximum number of results to return (default 5, max recommended 10)
+            
+            Returns:
+                JSON string with search results:
+                - Array of matching items with item_id, name, code, brand, stock, price
+                - similarity_score for each match (0.0 to 1.0)
+                - description snippet for each item
+                - Empty array if no matches found
+            """
             try:
                 # For v4 with embeddings manager
                 if self.mode == "propose" and self.embeddings_manager:
@@ -112,28 +129,52 @@ class InventoryTools:
                         "message": f"Found {len(matches)} inventory matches for proposal"
                     })
                 else:
-                    return json.dumps(matches, indent=2)
+                    # V3 mode - return consistent dict format
+                    return json.dumps({
+                        "success": True,
+                        "query": query,
+                        "matches_found": len(matches),
+                        "matches": matches,
+                        "message": f"Found {len(matches)} inventory matches"
+                    })
                     
             except Exception as e:
                 logger.error(f"Error searching inventory: {e}")
-                if self.mode == "propose":
-                    return json.dumps({
-                        "success": False,
-                        "error": str(e),
-                        "matches": []
-                    })
-                else:
-                    return json.dumps({"error": str(e), "matches": []})
+                # Return consistent error format for both modes
+                return json.dumps({
+                    "success": False,
+                    "error": str(e),
+                    "query": query,
+                    "matches_found": 0,
+                    "matches": [],
+                    "message": f"Error searching inventory: {str(e)}"
+                })
         
         tools.append(search_inventory)
         
         # Visual search tool
         @function_tool(
             name_override="search_visual",
-            description_override="Search inventory by visual features or image description",
+            description_override="Search inventory by visual features or image description. Use ONLY when you have visual information about products (colors, shapes, images). Do NOT use for text-based searches.",
         )
-        def search_visual(description: str, limit: int = 5) -> List[Dict[str, Any]]:
-            """Visual similarity search"""
+        async def search_visual(description: str, limit: int = 5) -> str:
+            """Search inventory using visual features and image similarity.
+            
+            This tool searches for products based on visual characteristics like colors,
+            shapes, patterns, or appearance. Use this when you have visual information
+            from images or detailed visual descriptions in emails.
+            
+            Args:
+                description: Visual description of what to find (e.g., "red rectangular label with white text", "circular hang tag with logo")
+                limit: Maximum number of results to return (default 5)
+            
+            Returns:
+                JSON string with visual search results:
+                - Array of items with visual similarity scores
+                - image_available boolean for each item
+                - visual_features list for each match
+                - Empty array if no visual matches found
+            """
             try:
                 # For now, use text-based search with visual keywords
                 visual_query = f"visual appearance {description}"
@@ -188,10 +229,25 @@ class InventoryTools:
                             }
                         )
                 
-                return json.dumps(matches)  # Return JSON string for consistency
+                # Return consistent dict format
+                return json.dumps({
+                    "success": True,
+                    "image_path": image_path,
+                    "matches_found": len(matches),
+                    "matches": matches,
+                    "message": f"Found {len(matches)} visual matches"
+                })
             except Exception as e:
                 logger.error(f"Error in visual search: {e}")
-                return json.dumps([])  # Return empty JSON array string
+                # Return consistent error format
+                return json.dumps({
+                    "success": False,
+                    "error": str(e),
+                    "image_path": image_path,
+                    "matches_found": 0,
+                    "matches": [],
+                    "message": f"Error in visual search: {str(e)}"
+                })
         
         tools.append(search_visual)
         

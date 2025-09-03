@@ -13,10 +13,15 @@ print("=" * 80)
 print("RE-INGESTING INVENTORY WITH STELLA-400M EMBEDDINGS")
 print("=" * 80)
 
-# Create a new collection for stella embeddings
-print("\n1. Creating new ChromaDB collection for Stella embeddings...")
-chroma_client = ChromaDBClient(collection_name="inventory_stella")
-print(f"Collection created: {chroma_client.collection.name}")
+# Update the existing collection with stella embeddings
+print("\n1. Updating main ChromaDB collection with Stella embeddings...")
+chroma_client = ChromaDBClient(collection_name="tag_inventory_stella_smart")
+print(f"Collection to update: {chroma_client.collection.name}")
+
+# Clear existing data to avoid conflicts
+print("   Clearing existing data...")
+chroma_client.delete_all()
+print("   ✓ Cleared existing data")
 
 # Initialize ingestion with stella-400m
 print("\n2. Initializing Stella-400M embeddings...")
@@ -25,7 +30,7 @@ ingestion = ExcelInventoryIngestion(
 )
 
 # Find Excel files to ingest
-excel_dir = "inventory_excel_files"
+excel_dir = "inventory"
 if os.path.exists(excel_dir):
     excel_files = [f for f in os.listdir(excel_dir) if f.endswith(".xlsx")]
     print(f"\n3. Found {len(excel_files)} Excel files to ingest")

@@ -30,7 +30,7 @@ class PaymentTools:
         # Payment tracking tool
         @function_tool(
             name_override="track_payment",
-            description_override="Track and process payment confirmations including UTR numbers, cheque details, and payment receipts." if self.mode == "execute" else "Analyze payment information for proposal generation",
+            description_override="Track and process payment confirmations including UTR numbers, cheque details, and payment receipts. Use ONLY when email contains payment information. Do NOT use for order placement emails." if self.mode == "execute" else "Analyze payment information for proposal generation. Use ONLY when payment details are present in email.",
         )
         async def track_payment(
             sender_email: str,
@@ -39,7 +39,27 @@ class PaymentTools:
             amount: Optional[float] = None,
             order_id: Optional[str] = None,
         ) -> str:
-            """Track payment information"""
+            """Track and verify payment information from customers.
+            
+            This tool processes payment confirmations and tracks financial transactions.
+            Use this ONLY when the email contains payment information like UTR numbers,
+            cheque details, or payment receipts. Do NOT use for regular order emails.
+            
+            Args:
+                sender_email: Email address of customer making the payment
+                payment_type: Type of payment ("utr", "cheque", "cash", "online")
+                payment_reference: Payment reference number (UTR number, cheque number, transaction ID)
+                amount: Payment amount in currency (optional, extracted from email if not provided)
+                order_id: Associated order ID if payment is for specific order (optional)
+            
+            Returns:
+                JSON string with payment tracking results:
+                - success: Whether payment was successfully tracked
+                - payment_record: Complete payment record with ID and timestamp
+                - confidence: Confidence in payment verification
+                - next_actions: Recommended follow-up actions
+                - requires_human_review: Whether manual verification is needed
+            """
             
             try:
                 # Validate UTR if payment type is UTR

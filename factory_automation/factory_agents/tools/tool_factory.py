@@ -78,7 +78,7 @@ def create_approval_wrapper(function_tool, action_classifier):
     
     # Preserve metadata so orchestrator can still identify the tool
     wrapper.name = function_tool.name
-    wrapper.params_json_schema = getattr(function_tool, 'params_json_schema', {})
+    wrapper.params_json_schema = getattr(function_tool, 'params_json_schema', None)  # Use None, not {}
     wrapper.description = getattr(function_tool, 'description', '')
     wrapper.original_tool = function_tool  # Keep reference to original
     wrapper.is_wrapped = True  # Flag to identify wrapped tools
@@ -121,7 +121,17 @@ class ToolFactory:
         self.openai_client = openai_client
         self.order_processor = order_processor
         self.image_processor = image_processor
-        self.embeddings_manager = embeddings_manager
+        
+        # Initialize embeddings manager if not provided
+        if embeddings_manager is None and chromadb_client is not None:
+            # Import here to avoid circular dependencies
+            from factory_automation.factory_rag.embeddings_config import EmbeddingsManager
+            # Use Stella-400M for 1024 dimension embeddings to match ChromaDB
+            self.embeddings_manager = EmbeddingsManager("stella-400m", device="cpu")
+            logger.info("Initialized Stella-400M embeddings manager for 1024 dimensions")
+        else:
+            self.embeddings_manager = embeddings_manager
+            
         self.email_configs = email_configs or {}
         self.pattern_config = pattern_config or {}
         

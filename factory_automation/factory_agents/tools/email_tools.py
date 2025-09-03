@@ -38,13 +38,27 @@ class EmailTools:
         # Check emails tool
         @function_tool(
             name_override="check_emails",
-            description_override="Check for new emails in the inbox",
+            description_override="Check for new emails in the inbox. Use at the START of processing to discover new emails. Do NOT use if you already have email content to process.",
         )
-        async def check_emails() -> List[Dict[str, Any]]:
-            """Poll for new emails"""
+        async def check_emails() -> str:
+            """Poll Gmail inbox for new unread emails.
+            
+            This tool retrieves new emails from the configured Gmail account. Use this
+            at the beginning of email processing workflows when you need to discover
+            what emails have arrived. Do NOT use if you already have email content.
+            
+            Args:
+                None - this tool takes no parameters
+            
+            Returns:
+                JSON string containing array of email objects:
+                - Each email contains: subject, body, sender, attachments, date
+                - Empty array if no new emails found
+                - Error message if Gmail is not configured
+            """
             if not self.gmail_agent:
                 logger.debug("Gmail agent disabled - no emails to check")
-                return []
+                return json.dumps([])  # Return empty JSON array string
             
             try:
                 if self.mode == "execute":
@@ -61,21 +75,22 @@ class EmailTools:
                         email_data = self.gmail_agent.process_order_email(msg["id"])
                         if email_data:
                             emails.append(email_data)
-                    return emails
+                    return json.dumps(emails)  # Return JSON string
                 else:
                     # V4: Return mock/cached emails for proposal
-                    return await self.gmail_agent.poll_emails() if self.gmail_agent else []
+                    result = await self.gmail_agent.poll_emails() if self.gmail_agent else []
+                    return json.dumps(result)  # Return JSON string
                     
             except Exception as e:
                 logger.error(f"Error checking emails: {e}")
-                return []
+                return json.dumps([])  # Return empty JSON array string
         
         tools.append(check_emails)
         
         # Email classification tool
         @function_tool(
             name_override="classify_email_intent",
-            description_override="Intelligently classify email intent using business context, patterns, and AI. ALWAYS use this FIRST before any other processing.",
+            description_override="Intelligently classify email intent using business context, patterns, and AI. ALWAYS use this FIRST before any other processing. Do NOT use if email classification is already complete.",
         )
         async def classify_email_intent(
             email_subject: str,
@@ -83,7 +98,28 @@ class EmailTools:
             sender_email: str,
             recipient_email: Optional[str] = None,
         ) -> str:
-            """Classify email using business context, patterns, and GPT-4o"""
+            """Classify email intent using business context, patterns, and GPT-4o.
+            
+            This tool must be called FIRST to understand the email's purpose before processing
+            attachments or extracting orders. It analyzes the email content and provides
+            classification with confidence scores.
+            
+            Args:
+                email_subject: The subject line of the email to classify
+                email_body: The full text content of the email body
+                sender_email: The email address of the sender (e.g., "customer@company.com")
+                recipient_email: The email address that received this email (optional, defaults to primary business email)
+            
+            Returns:
+                JSON string with classification results:
+                - classification: Intent type (NEW_ORDER, PAYMENT, INQUIRY, etc.)
+                - confidence: Confidence score from 0.0 to 1.0
+                - reasoning: Explanation of why this classification was chosen
+                - key_indicators: List of words/phrases that guided the decision
+                - alternative_classification: Second most likely intent if applicable
+                - extracted_entities: Dictionary of order numbers, UTRs, quantities found
+                - suggested_tools: List of recommended tools to use next
+            """
             
             # Normalize recipient email
             if recipient_email:
@@ -264,7 +300,7 @@ class EmailTools:
         # Email response tool
         @function_tool(
             name_override="send_email_response",
-            description_override="Send email responses to customers, suppliers, or internal staff" if self.mode == "execute" else "Generate email response draft for approval",
+            description_override="Send email responses to customers, suppliers, or internal staff. Use ONLY AFTER email has been classified and processed. Do NOT use before understanding email intent or completing order analysis." if self.mode == "execute" else "Generate email response draft for approval. Use ONLY AFTER email classification and order processing are complete.",
         )
         async def send_email_response(
             to_email: str,
@@ -273,7 +309,29 @@ class EmailTools:
             email_type: str,
             attachments: Optional[List[str]] = None,
         ) -> str:
-            """Send or draft email response based on mode"""
+            """Send or draft email response based on orchestrator mode.
+            
+            This tool should ONLY be used after the email has been properly classified
+            and any necessary processing (order extraction, inventory search, etc.) has
+            been completed. It's typically the LAST step in the workflow.
+            
+            Args:
+                to_email: Recipient's email address (e.g., "customer@company.com")
+                subject: Email subject line for the response
+                body: Complete email body text with proper formatting
+                email_type: Type of response ("order_confirmation", "quotation", "inquiry_response", "payment_acknowledgment")
+                attachments: Optional list of file paths to attach (e.g., ["/path/to/invoice.pdf"])
+            
+            Returns:
+                JSON string with email sending results:
+                - email_sent: Boolean indicating if email was sent (execute mode)
+                - draft_created: Boolean indicating if draft was created (propose mode)
+                - to: Recipient email address
+                - subject: Email subject used
+                - type: Email type classification
+                - status: Success/failure status
+                - timestamp: When the email was sent/drafted
+            """
             
             try:
                 if self.mode == "execute":

@@ -5,7 +5,7 @@ Generates comprehensive workflow proposals for human review
 
 import uuid
 import logging
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 
 from factory_automation.factory_models.workflow_models import (
@@ -21,8 +21,7 @@ from factory_automation.factory_models.workflow_models import (
     EmailContent,
     DatabaseOperation
 )
-from factory_automation.factory_models.order_models import ExtractedOrder, CustomerInfo, OrderItem
-from factory_automation.factory_database.models import Customer as DBCustomer
+from factory_automation.factory_models.order_models import ExtractedOrder
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +206,91 @@ class ProposalEngine:
         actions = []
         step = 1
         
+        # If no actions could be determined, add fallback actions
+        if not order_data and not inventory_matches and workflow_type == WorkflowType.NEW_ORDER:
+            # Add fallback actions for failed extraction
+            logger.warning("No order data extracted - adding comprehensive fallback actions")
+            
+            # Step 1: Request Information
+            actions.append(ProposedAction(
+                step=step,
+                action=ActionType.REQUEST_INFORMATION,
+                details="Request structured order details from customer",
+                confidence=0.3,
+                risk=RiskLevel.LOW,
+                data={
+                    "reason": "Could not automatically extract order information",
+                    "required_fields": ["item_descriptions", "quantities", "delivery_date"]
+                }
+            ))
+            step += 1
+            
+            # Step 2: Validate Inventory (placeholder)
+            actions.append(ProposedAction(
+                step=step,
+                action=ActionType.VALIDATE_INVENTORY,
+                details="Check inventory availability once order details are confirmed",
+                confidence=0.2,
+                risk=RiskLevel.MEDIUM,
+                data={
+                    "status": "pending_order_details",
+                    "inventory_action": "Will check stock levels after clarification"
+                }
+            ))
+            step += 1
+            
+            # Step 3: Reserve Inventory
+            actions.append(ProposedAction(
+                step=step,
+                action=ActionType.RESERVE_INVENTORY,
+                details="Reserve inventory items and update Excel tracking sheet",
+                confidence=0.2,
+                risk=RiskLevel.MEDIUM,
+                data={
+                    "excel_update": "Update inventory Excel with reserved quantities",
+                    "database_update": "Update PostgreSQL and ChromaDB",
+                    "status": "pending_order_confirmation"
+                }
+            ))
+            step += 1
+            
+            # Step 4: Update Database
+            actions.append(ProposedAction(
+                step=step,
+                action=ActionType.UPDATE_DATABASE,
+                details="Update all systems: PostgreSQL, ChromaDB, and Excel inventory sheet",
+                confidence=0.3,
+                risk=RiskLevel.LOW,
+                data={
+                    "systems": ["PostgreSQL", "ChromaDB", "Excel"],
+                    "excel_file": "inventory/master_inventory.xlsx",
+                    "update_type": "reserve_stock"
+                }
+            ))
+            step += 1
+            
+            # Step 5: Send Catalog
+            actions.append(ProposedAction(
+                step=step,
+                action=ActionType.SEND_CATALOG,
+                details="Send product catalog to help customer specify requirements",
+                confidence=0.4,
+                risk=RiskLevel.LOW,
+                data={"catalog_type": "full", "format": "pdf"}
+            ))
+            step += 1
+            
+            # Step 6: Compose Email
+            actions.append(ProposedAction(
+                step=step,
+                action=ActionType.COMPOSE_EMAIL,
+                details="Compose clarification email to customer",
+                confidence=0.5,
+                risk=RiskLevel.LOW,
+                data={"template": "order_clarification"}
+            ))
+            return actions
+        
         if workflow_type == WorkflowType.NEW_ORDER:
             # Validate inventory
             if inventory_matches:
@@ -271,6 +355,97 @@ class ProposalEngine:
                 step, workflow_type
             ))
             
+        elif workflow_type == WorkflowType.QUOTATION_REQUEST:
+            # For quotation requests, we need to check inventory and prepare quote
+            
+            # Step 1: Validate Inventory
+            actions.append(ProposedAction(
+                step=step,
+                action=ActionType.VALIDATE_INVENTORY,
+                details="Check inventory availability for quotation",
+                confidence=0.7,
+                risk=RiskLevel.LOW,
+                data={"purpose": "quotation_preparation"}
+            ))
+            step += 1
+            
+            # Step 2: Calculate Pricing
+            actions.append(ProposedAction(
+                step=step,
+                action=ActionType.CALCULATE_PRICING,
+                details="Calculate pricing for requested items",
+                confidence=0.8,
+                risk=RiskLevel.LOW,
+                data={"include_discounts": True}
+            ))
+            step += 1
+            
+            # Step 3: Generate Quotation
+            actions.append(ProposedAction(
+                step=step,
+                action=ActionType.GENERATE_QUOTATION,
+                details="Generate formal quotation document",
+                confidence=0.85,
+                risk=RiskLevel.LOW,
+                data={"format": "pdf", "validity_days": 30}
+            ))
+            step += 1
+            
+            # Step 4: Reserve Inventory (optional)
+            actions.append(ProposedAction(
+                step=step,
+                action=ActionType.RESERVE_INVENTORY,
+                details="Temporarily reserve items in inventory and Excel",
+                confidence=0.6,
+                risk=RiskLevel.MEDIUM,
+                data={
+                    "reservation_type": "soft_reserve",
+                    "excel_update": "Mark as tentatively reserved in Excel",
+                    "duration_days": 7
+                }
+            ))
+            step += 1
+            
+            # Step 5: Update Database and Excel
+            actions.append(ProposedAction(
+                step=step,
+                action=ActionType.UPDATE_DATABASE,
+                details="Update all systems: PostgreSQL, ChromaDB, and Excel inventory sheet",
+                confidence=0.9,
+                risk=RiskLevel.LOW,
+                data={
+                    "systems": ["PostgreSQL", "ChromaDB", "Excel"],
+                    "excel_file": "inventory/master_inventory.xlsx",
+                    "update_type": "quotation_generated",
+                    "excel_columns": ["Reserved for Quote", "Quote Date", "Customer"]
+                }
+            ))
+            step += 1
+            
+            # Step 6: Compose Email with Quote
+            actions.append(ProposedAction(
+                step=step,
+                action=ActionType.COMPOSE_EMAIL,
+                details="Send quotation email with pricing details",
+                confidence=0.95,
+                risk=RiskLevel.LOW,
+                data={
+                    "template": "quotation_email",
+                    "attachments": ["quotation.pdf"]
+                }
+            ))
+            step += 1
+            
+            # Step 7: Schedule Follow-up
+            actions.append(ProposedAction(
+                step=step,
+                action=ActionType.SCHEDULE_FOLLOWUP,
+                details="Schedule follow-up for quotation response",
+                confidence=0.9,
+                risk=RiskLevel.LOW,
+                data={"followup_days": 3}
+            ))
+            
         elif workflow_type == WorkflowType.PAYMENT_PROCESSING:
             # Update payment status
             actions.append(ProposedAction(
@@ -303,6 +478,61 @@ class ProposalEngine:
                 confidence=0.95,
                 risk=RiskLevel.LOW,
                 data={"status": "paid"}
+            ))
+        
+        # Ensure we always have at least one action - comprehensive fallback
+        if not actions:
+            logger.warning(f"No actions generated for {workflow_type} - adding comprehensive fallback")
+            step = 1
+            
+            # Add comprehensive fallback actions for any workflow type
+            actions.append(ProposedAction(
+                step=step,
+                action=ActionType.REQUEST_INFORMATION,
+                details="Request additional information to process this request",
+                confidence=0.2,
+                risk=RiskLevel.LOW,
+                data={
+                    "reason": "Unable to determine specific actions needed",
+                    "workflow_type": workflow_type.value
+                }
+            ))
+            step += 1
+            
+            # Add inventory validation
+            actions.append(ProposedAction(
+                step=step,
+                action=ActionType.VALIDATE_INVENTORY,
+                details="Validate inventory availability for requested items",
+                confidence=0.2,
+                risk=RiskLevel.MEDIUM,
+                data={"status": "pending_details"}
+            ))
+            step += 1
+            
+            # Add database update with Excel
+            actions.append(ProposedAction(
+                step=step,
+                action=ActionType.UPDATE_DATABASE,
+                details="Update PostgreSQL, ChromaDB, and Excel inventory tracking",
+                confidence=0.3,
+                risk=RiskLevel.LOW,
+                data={
+                    "systems": ["PostgreSQL", "ChromaDB", "Excel"],
+                    "excel_file": "inventory/master_inventory.xlsx",
+                    "update_type": "pending_confirmation"
+                }
+            ))
+            step += 1
+            
+            # Add email composition
+            actions.append(ProposedAction(
+                step=step,
+                action=ActionType.COMPOSE_EMAIL,
+                details="Compose response email to customer",
+                confidence=0.4,
+                risk=RiskLevel.LOW,
+                data={"template": "clarification_request"}
             ))
         
         return actions
@@ -428,15 +658,29 @@ class ProposalEngine:
                 table="inventory",
                 data={"reserved": True}
             ))
+            
+            operations.append(DatabaseOperation(
+                type="update_excel",
+                table="excel_inventory",
+                data={
+                    "file": "inventory/master_inventory.xlsx",
+                    "action": "reserve_stock",
+                    "update_columns": ["Available Quantity", "Reserved", "Last Updated"]
+                }
+            ))
         
         return ProposedAction(
             step=step,
             action=ActionType.UPDATE_DATABASE,
-            details="Update system databases",
+            details="Update PostgreSQL, ChromaDB, and Excel inventory tracking sheet",
             confidence=0.95,
             risk=RiskLevel.MEDIUM,
             database_operations=operations,
-            data={"operation_count": len(operations)}
+            data={
+                "operation_count": len(operations),
+                "systems": ["PostgreSQL", "ChromaDB", "Excel"],
+                "excel_update": "Update inventory quantities in Excel tracking sheet"
+            }
         )
     
     def _create_followup_action(self, step: int) -> ProposedAction:

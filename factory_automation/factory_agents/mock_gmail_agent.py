@@ -5,14 +5,12 @@ import logging
 import random
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict
-
-from .base import BaseAgent
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
 
-class MockGmailAgent(BaseAgent):
+class MockGmailAgent:
     """Mock Gmail agent that simulates email behavior for testing."""
 
     def __init__(
@@ -20,10 +18,7 @@ class MockGmailAgent(BaseAgent):
         name: str = "MockGmailAgent",
         mock_emails_dir: str = "mock_emails",
     ):
-        instructions = """You are a mock Gmail agent for testing purposes.
-        You simulate email polling and return predefined test emails."""
-
-        super().__init__(name, instructions)
+        self.name = name
         self.mock_emails_dir = Path(mock_emails_dir)
         self.mock_emails_dir.mkdir(exist_ok=True)
         self.processed_emails = set()
@@ -323,3 +318,33 @@ Zara Design Team""",
 
         logger.info(f"Added mock email: {email_id}")
         return email_id
+
+    async def poll_emails(self) -> List[Dict[str, Any]]:
+        """Poll for new mock emails asynchronously.
+        
+        Returns:
+            List of email data dictionaries
+        """
+        emails = []
+        
+        # Get unread emails from mock directory
+        for email_file in self.mock_emails_dir.glob("*.json"):
+            if email_file.stem not in self.processed_emails:
+                with open(email_file) as f:
+                    email = json.load(f)
+                    
+                # Only return unread emails
+                if "UNREAD" in email.get("labels", []):
+                    emails.append({
+                        "message_id": email["id"],
+                        "from": email["from"],
+                        "subject": email["subject"],
+                        "body": email["body"],
+                        "attachments": email.get("attachments", []),
+                        "email_type": "order"  # Default type
+                    })
+                    
+                    # Mark as processed
+                    self.processed_emails.add(email_file.stem)
+                    
+        return emails

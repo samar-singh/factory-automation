@@ -36,7 +36,7 @@ class OrderTools:
         # Complete order processing tool
         @function_tool(
             name_override="process_complete_order" if self.mode == "execute" else "analyze_order_for_proposal",
-            description_override="Process complete order with attachments, ChromaDB search, and human review workflow" if self.mode == "execute" else "Analyze order details for proposal generation without execution",
+            description_override="Process complete order with attachments, ChromaDB search, and human review workflow. Use ONLY AFTER email classification AND attachment extraction. Do NOT use as first step." if self.mode == "execute" else "Analyze order details for proposal generation without execution. Use ONLY AFTER email classification and attachment processing.",
         )
         async def process_complete_order(
             email_subject: str,
@@ -44,7 +44,28 @@ class OrderTools:
             sender_email: str,
             attachments: Optional[str] = None,
         ) -> str:
-            """Process or analyze order based on mode"""
+            """Process complete order workflow including extraction, search, and review.
+            
+            This tool handles the complete order processing pipeline. Use this ONLY AFTER
+            the email has been classified and any attachments have been extracted. This
+            is typically used after classify_email_intent and extract_*_data tools.
+            
+            Args:
+                email_subject: Subject line of the order email
+                email_body: Full text content of the email with order details
+                sender_email: Customer's email address placing the order
+                attachments: Optional JSON string of attachment data (legacy parameter, attachments should be pre-extracted)
+            
+            Returns:
+                JSON string with complete order processing results:
+                - order_id: Generated order identifier
+                - customer: Customer email address
+                - total_items: Number of items in the order
+                - extraction_confidence: AI confidence in order extraction (0.0 to 1.0)
+                - recommended_action: Next step ("approve", "review", "clarify")
+                - inventory_matches: Array of matched inventory items
+                - items: Detailed list of order items with quantities and codes
+            """
             
             # Create a unique key for this email
             email_key = f"{sender_email}:{email_subject}"
@@ -155,10 +176,24 @@ class OrderTools:
         # Order status update tool
         @function_tool(
             name_override="update_order_status",
-            description_override="Update order status in the system" if self.mode == "execute" else "Propose order status update",
+            description_override="Update order status in the system. Use ONLY when you have a confirmed order_id and valid status change. Do NOT use for order creation or initial processing." if self.mode == "execute" else "Propose order status update. Use ONLY for existing orders with valid status transitions.",
         )
-        def update_order_status(order_id: str, new_status: str, notes: str = "") -> str:
-            """Update or propose order status change"""
+        async def update_order_status(order_id: str, new_status: str, notes: str = "") -> str:
+            """Update the status of an existing order in the system.
+            
+            This tool modifies the status of an already-created order. Use this ONLY
+            when you have a valid order_id from a previous order processing step and
+            need to change its status (e.g., from pending to approved).
+            
+            Args:
+                order_id: Existing order identifier (e.g., "ORD-20250829-123456")
+                new_status: New status to set ("pending", "approved", "in_production", "completed", "cancelled", "payment_received")
+                notes: Optional notes explaining the status change
+            
+            Returns:
+                String confirming the status update with timestamp and notes
+                Or JSON proposal object in propose mode
+            """
             valid_statuses = [
                 "pending",
                 "approved",

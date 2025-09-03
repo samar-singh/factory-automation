@@ -1,0 +1,75 @@
+{
+  "success": true,
+  "email_id": "test-integration-001",
+  "processing_complete": true,
+  "trace_name": "Email_Processing_Re: Allen Solly Order - Pro-Fo",
+  "workflow_id": "WF-20250824-205510-295bcc6b",
+  "tool_calls": [
+    {
+      "tool": "classify_email_intent",
+      "args": {
+        "email_subject": "Re: Allen Solly Order - Pro-Forma Invoice #1542",
+        "email_body": "Dear Sir/Madam Order received with thanks & Greetings from Interface Direct. PFA Pro-Forma Invoice # 1542 & please check the description of the tag image & approve the order & do the needful. Please let us know if you need any more help. With warm Regards, PUSHPARAJ.A/ Interface Direct/ Tag supplier / trimsblr@yahoo.co.in Dispatches Team / PH/998000 9355. On Monday 28 July, 2025 at 07:00:31 pm IST, Rajlaxmi Home Products Pvt ltd <storerhppl@gmail.com> wrote: Dear Meena ji, See attached Allen Solly (E-com) brand bulk tag po copy for order confirmation. We need the bulk tag materials delivery date Fit FIT TAG Main Tag Main Tag Remark Bootcut TBALWBL0009N/10N/11N/12N/13N/14N/15N/16N TBALHGT0033N Sustainability hangtag Classic straight TBALWBL0001N/02N/03N/04N/05N/06N/07N/08N TBALHGT0033N Sustainability hangtag Skinny TBALTAG0363N/364N/365N/366N/367N/368N/369N TBALHGT0033N Sustainability hangtag Slim TBALWBL0060N/61N/62N/63N/64N/65N/66N/67N/68N TBALHGT0033N Sustainability hangtag Pls confirm the receipt and revert back. Thanks & Regards, Vijay kapse RAJLAXMI HOME PRODUCTS PVT. LTD Gala No. 5, Anjani Kumar Indi. Estate, Datta Mandir Road, Bhandup (W) Mumbai-400078 Contact No. 8655233004",
+        "sender_email": "trimsblr@yahoo.co.in",
+        "recipient_email": "storerhppl@gmail.com"
+      },
+      "result": "See logs",
+      "action_id": "ACT-5bc113521a47",
+      "action_type": "irreversible"
+    },
+    {
+      "tool": "handle_supplier_inquiry",
+      "args": {
+        "supplier_email": "trimsblr@yahoo.co.in",
+        "inquiry_type": "Order approval and query",
+        "email_subject": "Re: Allen Solly Order - Pro-Forma Invoice #1542",
+        "email_body": "Dear Sir/Madam Order received with thanks & Greetings from Interface Direct. PFA Pro-Forma Invoice # 1542 & please check the description of the tag image & approve the order & do the needful. Please let us know if you need any more help."
+      },
+      "result": "See logs",
+      "action_id": "ACT-11be7dab40f1",
+      "action_type": "irreversible"
+    },
+    {
+      "tool": "send_email_response",
+      "args": {
+        "to_email": "trimsblr@yahoo.co.in",
+        "subject": "Re: Allen Solly Order - Pro-Forma Invoice #1542",
+        "body": "Dear Pushparaj,\n\nThank you for sending the Pro-Forma Invoice #1542. Our team will review the order details and get back to you shortly.\n\nIf you require any further assistance, please do not hesitate to contact us.\n\nBest Regards,\nRajlaxmi Home Products Pvt Ltd",
+        "email_type": "Acknowledgment",
+        "attachments": null
+      },
+      "result": "See logs",
+      "action_id": "ACT-8c8c215b4073",
+      "action_type": "irreversible"
+    }
+  ],
+  "actions_tracked": 3,
+  "decisions_made": [],
+  "documents_generated": [],
+  "reasoning": "Processed email from trimsblr@yahoo.co.in \n        regarding Re: Allen Solly Order - Pro-Forma Invoice #1542.\n        \n        Actions taken:\n        - classify_email_intent\n- handle_supplier_inquiry\n- send_email_response\n        \n        Workflow ID: WF-20250824-205510-295bcc6b",
+  "autonomous_actions": 3,
+  "auto_executed_actions": [],
+  "pending_approval_actions": [
+    {
+      "action_id": "ACT-5bc113521a47",
+      "action_name": "classify_email_intent",
+      "type": "irreversible",
+      "status": "executed_without_approval",
+      "warning": "Action was executed by agent before approval mechanism could intervene"
+    },
+    {
+      "action_id": "ACT-11be7dab40f1",
+      "action_name": "handle_supplier_inquiry",
+      "type": "irreversible",
+      "status": "executed_without_approval",
+      "warning": "Action was executed by agent before approval mechanism could intervene"
+    },
+    {
+      "action_id": "ACT-8c8c215b4073",
+      "action_name": "send_email_response",
+      "type": "irreversible",
+      "status": "executed_without_approval",
+      "warning": "Action was executed by agent before approval mechanism could intervene"
+    }
+  ]
+}

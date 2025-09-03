@@ -9,32 +9,59 @@ from agents import Agent, function_tool
 from ..factory_database.vector_db import ChromaDBClient
 from .human_interaction_manager import HumanInteractionManager, Priority
 from .orchestrator_v3_agentic import AgenticOrchestratorV3
+# V3 Approval merged into V3 Agentic - no longer needed as separate file
 
 logger = logging.getLogger(__name__)
 
 
-class OrchestratorWithHuman(AgenticOrchestratorV3):
+class OrchestratorWithHuman:
     """Orchestrator enhanced with human-in-the-loop capabilities"""
 
     def __init__(self, chromadb_client: ChromaDBClient, use_mock_gmail: bool = True):
         """Initialize with human interaction support"""
-        super().__init__(chromadb_client, use_mock_gmail)
+        # V3 Agentic now has true approval capability merged in
+        logger.info("Using V3 Orchestrator with true approval capability (direct API)")
+        
+        # Initialize the V3 orchestrator (now with approval built-in)
+        self._base_orchestrator = AgenticOrchestratorV3(chromadb_client, use_mock_gmail)
+        
+        # Copy attributes from base for compatibility
+        self.__dict__.update(self._base_orchestrator.__dict__)
+        
+        # Ensure we have key methods
+        self.process_email = self._base_orchestrator.process_email
+        self.approve_action = self._base_orchestrator.approve_action
+        self.order_processor = self._base_orchestrator.order_processor
+        self.chromadb_client = chromadb_client
 
         # Initialize human interaction manager
         self.human_manager = HumanInteractionManager()
+        
+        # Pass human_manager to base orchestrator for two-tier system integration
+        self._base_orchestrator.human_manager = self.human_manager
 
         # Register notification handler
         self.human_manager.register_notification_handler(
             self._handle_review_notification
         )
 
-        # Update the order processor with human manager
-        self.order_processor.human_manager = self.human_manager
+        # Update the order processor with human manager if available
+        if hasattr(self, 'order_processor'):
+            self.order_processor.human_manager = self.human_manager
 
-        # Add human interaction tools to the agent
-        self._add_human_tools()
-
-        logger.info("Initialized Orchestrator with Human Interaction support")
+        # No need for approval_mode flag - V3 always has approval capability
+        self.is_monitoring = False  # Flag for monitoring status
+        logger.info("Initialized Orchestrator with Human Interaction support (true approval capability built-in)")
+    
+    def is_running(self):
+        """Check if orchestrator is running"""
+        return True  # Always return true for now
+    
+    
+    async def stop(self):
+        """Stop the orchestrator"""
+        logger.info("Stopping orchestrator")
+        # Cleanup if needed
 
     def _add_human_tools(self):
         """Add human interaction tools to the agent"""
@@ -211,12 +238,20 @@ class OrchestratorWithHuman(AgenticOrchestratorV3):
             else:
                 priority = OrderPriority.LOW
 
+            # Get workflow_id from the result
+            workflow_id = result.get("workflow_id") 
+            if not workflow_id and hasattr(self, '_base_orchestrator'):
+                # Try to get from base orchestrator if available
+                if hasattr(self._base_orchestrator, 'current_workflow_id'):
+                    workflow_id = self._base_orchestrator.current_workflow_id
+            
             # Create recommendation for queue
             recommendation = QueuedRecommendation(
                 order_id=order_id,
                 customer_email=email_dict.get("from", "unknown"),
                 recommendation_type=RecommendationType.EMAIL_RESPONSE,
                 recommendation_data={
+                    "workflow_id": workflow_id,  # Add workflow ID
                     "email_draft": {
                         "subject": f"Re: {email_dict.get('subject', 'Order Request')}",
                         "body": result.get(
@@ -232,6 +267,8 @@ class OrchestratorWithHuman(AgenticOrchestratorV3):
                     "suggested_action": result.get(
                         "recommended_action", "human_review"
                     ),
+                    "auto_executed_actions": result.get("actions", {}).get("executed", []) if "actions" in result else [],  # Add executed actions
+                    "pending_approval_actions": result.get("actions", {}).get("pending", []) if "actions" in result else [],  # Add pending actions
                 },
                 confidence_score=confidence_score,
                 priority=priority,
@@ -502,15 +539,28 @@ Process this decision using the process_review_decision tool and take appropriat
 
     async def start_with_review_monitoring(self):
         """Start orchestrator with review monitoring"""
-
-        # Start email monitoring
-        email_task = asyncio.create_task(self.start_email_monitoring())
-
-        # Start review monitoring
-        review_task = asyncio.create_task(self.monitor_reviews())
-
-        # Wait for both
-        await asyncio.gather(email_task, review_task)
+        
+        # Delegate email monitoring to base orchestrator if it has the method
+        tasks = []
+        
+        if hasattr(self._base_orchestrator, 'start_email_monitoring'):
+            email_task = asyncio.create_task(self._base_orchestrator.start_email_monitoring())
+            tasks.append(email_task)
+            logger.info("Started email monitoring from base orchestrator")
+        else:
+            logger.info("Base orchestrator does not have email monitoring")
+        
+        # Start review monitoring if we have a human manager
+        if self.human_manager and hasattr(self, 'monitor_reviews'):
+            review_task = asyncio.create_task(self.monitor_reviews())
+            tasks.append(review_task)
+            logger.info("Started review monitoring")
+        
+        # Wait for all tasks
+        if tasks:
+            await asyncio.gather(*tasks)
+        else:
+            logger.info("No background monitoring tasks to run")
 
 
 def create_orchestrator_with_human() -> OrchestratorWithHuman:

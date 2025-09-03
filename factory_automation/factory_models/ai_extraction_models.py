@@ -8,12 +8,12 @@ from pydantic import BaseModel, ConfigDict, Field
 class CustomerInformation(BaseModel):
     """Customer information as extracted by AI"""
 
-    company: Optional[str] = Field(default=None, description="Company name")
+    company: Optional[str] = Field(default=None, description="Customer company name (the entity ordering tags, not the supplier)")
     contact_person: Optional[str] = Field(
-        default=None, description="Contact person name"
+        default=None, description="Contact person name at the customer company"
     )
-    email: Optional[str] = Field(default=None, description="Email address")
-    phone: Optional[str] = Field(default=None, description="Phone number")
+    email: Optional[str] = Field(default=None, description="Customer's email address (the company/entity placing the order for tags, NOT the supplier/vendor email like trimsblr@yahoo.co.in)")
+    phone: Optional[str] = Field(default=None, description="Customer's phone number")
 
     model_config = ConfigDict(extra="forbid")  # No extra fields allowed
 

@@ -217,3 +217,55 @@ class EmailPattern(Base):
             name="uq_sender_recipient_intent",
         ),
     )
+
+
+class ActionAudit(Base):
+    """Track all actions taken by orchestrator for audit and potential rollback"""
+    __tablename__ = "action_audit"
+    
+    id = Column(Integer, primary_key=True)
+    action_id = Column(String(100), unique=True, nullable=False)  # Unique ID for each action
+    workflow_id = Column(String(100), nullable=False)  # Groups related actions
+    order_id = Column(String(50), ForeignKey("orders.order_number"), nullable=True)  # Optional order reference
+    
+    # Action classification
+    action_type = Column(String(50), nullable=False)  # reversible or irreversible
+    action_category = Column(String(50), nullable=False)  # email_send, db_update, inventory_check, etc.
+    action_name = Column(String(100), nullable=False)  # Specific action name
+    
+    # Action details
+    description = Column(Text)  # Human-readable description
+    details = Column(JSON)  # Full action details as JSON
+    
+    # Rollback capability
+    can_rollback = Column(Integer, default=0)  # Boolean as integer (0=False, 1=True)
+    rollback_data = Column(JSON, nullable=True)  # Data needed to reverse action (only for reversible)
+    rolled_back = Column(Integer, default=0)  # Boolean as integer
+    rolled_back_at = Column(DateTime, nullable=True)
+    
+    # Execution tracking
+    executed = Column(Integer, default=0)  # Boolean as integer
+    executed_at = Column(DateTime, nullable=True)
+    execution_result = Column(JSON, nullable=True)  # Result of execution
+    
+    # Approval tracking (for irreversible actions)
+    requires_approval = Column(Integer, default=0)  # Boolean as integer
+    approved = Column(Integer, nullable=True)  # Null=pending, 1=approved, 0=rejected
+    approved_at = Column(DateTime, nullable=True)
+    approved_by = Column(String(255), nullable=True)  # User who approved
+    
+    # Metadata
+    confidence = Column(Float)  # Confidence score for this action
+    reasoning = Column(Text)  # AI reasoning for this action
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Indexes for performance
+    __table_args__ = (
+        Index("idx_workflow_id", "workflow_id"),
+        Index("idx_order_id", "order_id"),
+        Index("idx_action_type", "action_type"),
+        Index("idx_executed", "executed"),
+        Index("idx_requires_approval", "requires_approval"),
+        Index("idx_created_at", "created_at"),
+    )

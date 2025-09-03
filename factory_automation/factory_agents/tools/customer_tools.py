@@ -29,10 +29,26 @@ class CustomerTools:
         # Customer context tool
         @function_tool(
             name_override="get_customer_context",
-            description_override="Retrieve customer history and preferences",
+            description_override="Retrieve customer history and preferences. Use AFTER email classification to understand customer background. Do NOT use before knowing who the customer is.",
         )
-        def get_customer_context(customer_email: str) -> str:
-            """Get historical context for customer"""
+        async def get_customer_context(customer_email: str) -> str:
+            """Get historical context and preferences for a customer.
+            
+            This tool retrieves customer information including order history, preferences,
+            and payment patterns. Use this AFTER email classification to understand the
+            customer's background and provide personalized service.
+            
+            Args:
+                customer_email: Customer's email address to look up (e.g., "customer@company.com")
+            
+            Returns:
+                String summary (execute mode) or JSON object (propose mode) with:
+                - Customer tier (new, returning, regular, premium)
+                - Order count and history
+                - Product preferences
+                - Payment history quality
+                - Recommended actions based on customer profile
+            """
             try:
                 # Mock known customers for demo
                 known_customers = {

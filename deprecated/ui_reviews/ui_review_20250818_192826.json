@@ -1,0 +1,240 @@
+{
+  "timestamp": "2025-08-18T19:27:56.777554",
+  "checks": {
+    "visual_hierarchy_mobile": {
+      "status": "warning",
+      "checks": [
+        {
+          "status": "warning",
+          "message": "Gradient cards not found or not styled properly"
+        }
+      ]
+    },
+    "visual_hierarchy_tablet": {
+      "status": "warning",
+      "checks": [
+        {
+          "status": "warning",
+          "message": "Gradient cards not found or not styled properly"
+        }
+      ]
+    },
+    "visual_hierarchy_desktop": {
+      "status": "warning",
+      "checks": [
+        {
+          "status": "warning",
+          "message": "Gradient cards not found or not styled properly"
+        }
+      ]
+    }
+  },
+  "screenshots": [
+    "ui_screenshots/mobile_20250818_192804_main.png",
+    "ui_screenshots/mobile_20250818_192804_tab0.png",
+    "ui_screenshots/tablet_20250818_192812_main.png",
+    "ui_screenshots/tablet_20250818_192812_tab0.png",
+    "ui_screenshots/tablet_20250818_192812_tab1.png",
+    "ui_screenshots/tablet_20250818_192812_tab2.png",
+    "ui_screenshots/desktop_20250818_192823_main.png",
+    "ui_screenshots/desktop_20250818_192823_tab0.png",
+    "ui_screenshots/desktop_20250818_192823_tab1.png",
+    "ui_screenshots/desktop_20250818_192823_tab2.png"
+  ],
+  "issues": {
+    "blockers": [],
+    "high_priority": [
+      {
+        "viewport": "mobile",
+        "issue": "Missing ARIA labels",
+        "elements": [
+          "button"
+        ]
+      },
+      {
+        "viewport": "mobile",
+        "issue": "Touch targets too small (minimum 44x44px)",
+        "elements": [
+          {
+            "element": "button",
+            "size": "174.78125x1"
+          },
+          {
+            "element": "button",
+            "size": "164.28125x1"
+          },
+          {
+            "element": "button",
+            "size": "176.4375x1"
+          },
+          {
+            "element": "button",
+            "size": "161.125x1"
+          },
+          {
+            "element": "button",
+            "size": "229.25x1"
+          },
+          {
+            "element": "button",
+            "size": "155.671875x1"
+          },
+          {
+            "element": "button",
+            "size": "174.78125x32"
+          },
+          {
+            "element": "button",
+            "size": "164.28125x32"
+          },
+          {
+            "element": "button",
+            "size": "176.4375x32"
+          },
+          {
+            "element": "button",
+            "size": "161.125x32"
+          }
+        ]
+      },
+      {
+        "viewport": "tablet",
+        "issue": "Missing ARIA labels",
+        "elements": [
+          "button"
+        ]
+      },
+      {
+        "viewport": "desktop",
+        "issue": "Missing ARIA labels",
+        "elements": [
+          "button"
+        ]
+      }
+    ],
+    "medium_priority": [
+      {
+        "viewport": "mobile",
+        "issue": "Input field not responsive",
+        "error": "'ElementHandle' object has no attribute 'clear'"
+      },
+      {
+        "viewport": "mobile",
+        "issue": "Overlapping elements detected",
+        "details": [
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "wrap svelte-czcr5b"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "contain svelte-czcr5b"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "column  svelte-bnzux8"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "block svelte-1svsvh2 padded hide-container auto-margin"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "wrap center full svelte-ls20lj hide"
+          }
+        ]
+      },
+      {
+        "viewport": "tablet",
+        "issue": "Input field not responsive",
+        "error": "'ElementHandle' object has no attribute 'clear'"
+      },
+      {
+        "viewport": "tablet",
+        "issue": "Overlapping elements detected",
+        "details": [
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "wrap svelte-czcr5b"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "contain svelte-czcr5b"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "column  svelte-bnzux8"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "block svelte-1svsvh2 padded hide-container auto-margin"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "wrap center full svelte-ls20lj hide"
+          }
+        ]
+      },
+      {
+        "viewport": "desktop",
+        "issue": "Input field not responsive",
+        "error": "'ElementHandle' object has no attribute 'clear'"
+      },
+      {
+        "viewport": "desktop",
+        "issue": "Overlapping elements detected",
+        "details": [
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "wrap svelte-czcr5b"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "contain svelte-czcr5b"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "column  svelte-bnzux8"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "block svelte-1svsvh2 padded hide-container auto-margin"
+          },
+          {
+            "element1": "gradio-container gradio-container-5-38-2 svelte-1u81glu",
+            "element2": "wrap center full svelte-ls20lj hide"
+          }
+        ]
+      }
+    ],
+    "low_priority": [],
+    "suggestions": []
+  },
+  "metrics": {
+    "mobile": {
+      "domContentLoaded": 21,
+      "loadComplete": 67,
+      "firstPaint": 32
+    },
+    "tablet": {
+      "domContentLoaded": 21,
+      "loadComplete": 66,
+      "firstPaint": 24
+    },
+    "desktop": {
+      "domContentLoaded": 21,
+      "loadComplete": 63,
+      "firstPaint": 28
+    }
+  },
+  "summary": {
+    "total_issues": 10,
+    "blockers": 0,
+    "high_priority": 4,
+    "medium_priority": 6,
+    "low_priority": 0,
+    "suggestions": 0,
+    "screenshots_captured": 10
+  },
+  "overall_status": "NEEDS_FIXES"
+}

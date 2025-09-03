@@ -58,7 +58,8 @@ VALIDATION_RULES = {
         "must_be_first": False,
         "dependencies": ["classify_email_intent"],
         "category": ToolCategory.PROCESSING,
-        "required_params": ["email_data"],
+        "required_params": ["email_subject", "email_body", "sender_email"],
+        "optional_params": ["attachments"],
         "conditional_dependencies": {
             "if_has_attachments": ["extract_pdf_data", "extract_excel_data"]
         },
@@ -96,7 +97,8 @@ VALIDATION_RULES = {
         "must_be_first": False,
         "dependencies": ["classify_email_intent", "process_complete_order"],
         "category": ToolCategory.RESPONSE,
-        "required_params": ["document_type", "order_data"],
+        "required_params": ["doc_type", "customer_email", "items"],
+        "optional_params": ["decision"],
         "description": "Document generation requires order processing"
     },
     

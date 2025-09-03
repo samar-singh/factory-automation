@@ -1,0 +1,27 @@
+# [PLAN-PHASE-X] <type>: <description>
+# 
+# Implementation Plan: Two-Tier Action System
+# Plan ID: PLAN-2025-01-TWOTIER
+# Phase: <current phase number and name>
+# Task: <specific task from plan>
+# Adheres to: /docs/IMPLEMENTATION_PLAN_LOCK.md v1.0
+#
+# Types: feat, fix, docs, test, refactor, chore
+#
+# Example:
+# [PLAN-PHASE-1] feat: Add action_audit table for tracking actions
+#
+# Changes:
+# - 
+# - 
+#
+# Testing:
+# - [ ] Ran python run_factory_automation.py
+# - [ ] Ran python check_plan_adherence.py
+# - [ ] All tests passing
+#
+# Next Step:
+# 
+#
+# If this deviates from plan, document reason:
+# OVERRIDE REASON: 

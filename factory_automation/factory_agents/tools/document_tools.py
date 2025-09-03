@@ -28,12 +28,31 @@ class DocumentTools:
         # Document generation tool
         @function_tool(
             name_override="generate_document",
-            description_override="Generate quotations, confirmations, or other documents" if self.mode == "execute" else "Propose document generation for approval",
+            description_override="Generate quotations, confirmations, or other documents. Use ONLY AFTER order processing is complete and you know what document to create. Do NOT use before understanding customer needs." if self.mode == "execute" else "Propose document generation for approval. Use ONLY AFTER order analysis is complete.",
         )
-        def generate_document(
+        async def generate_document(
             doc_type: str, customer_email: str, items: str, decision: str = ""
         ) -> str:
-            """Generate business documents"""
+            """Generate business documents like quotations, confirmations, or invoices.
+            
+            This tool creates formal business documents based on processed order information.
+            Use this ONLY AFTER you have completed order processing and determined what
+            type of document the customer needs.
+            
+            Args:
+                doc_type: Type of document to generate ("quotation", "confirmation", "clarification", "invoice")
+                customer_email: Customer's email address for the document
+                items: Description or JSON string of items/services to include in document
+                decision: Optional context about why this document type was chosen
+            
+            Returns:
+                String with document reference (execute mode) or JSON proposal (propose mode):
+                - Document ID and title
+                - Customer information
+                - Item/service details
+                - Validity period or delivery timeline
+                - Terms and conditions
+            """
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
             doc_id = datetime.now().strftime("%Y%m%d-%H%M%S")
             

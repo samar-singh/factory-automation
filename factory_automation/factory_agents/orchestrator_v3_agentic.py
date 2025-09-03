@@ -106,6 +106,11 @@ class AgenticOrchestratorV3:
         self.pending_actions = []  # Track pending irreversible actions
         self.auto_executed_actions = []  # Track auto-executed reversible actions
         
+        # AI-extracted data storage for single source of truth
+        self.extracted_customer_info = None  # Store AI-extracted customer from process_complete_order
+        self.inventory_matches = []  # Store search results from search_inventory
+        self.tool_results_cache = {}  # Cache all tool results for reference
+        
         # Initialize validation agent for tool call validation
         self.validator = ValidationAgent(VALIDATION_RULES)
         self.validator.set_strict_mode(True)  # Enable strict validation
@@ -136,12 +141,15 @@ class AgenticOrchestratorV3:
             # Build OpenAI-compatible tool schema
             # Check for params_json_schema (wrapped tools) or parameters (original tools)
             params = getattr(tool, 'params_json_schema', None) or getattr(tool, 'parameters', None)
-            if not params:
+            if params is None:
+                logger.warning(f"Tool '{tool.name}' has no parameter schema - using empty schema")
                 params = {
                     "type": "object",
                     "properties": {},
                     "required": []
                 }
+            elif not params.get("properties"):
+                logger.warning(f"Tool '{tool.name}' has empty parameter properties")
             
             tool_schema = {
                 "type": "function",
@@ -174,6 +182,13 @@ class AgenticOrchestratorV3:
         # Call the wrapped tool - it handles approval logic internally
         try:
             result = await tool(**tool_args)
+            
+            # Cache the result for reference
+            self.tool_results_cache[tool_name] = result
+            
+            # Extract and store critical data based on tool type
+            self._extract_and_store_tool_data(tool_name, result)
+            
         except Exception as e:
             logger.error(f"Error executing tool {tool_name}: {e}")
             result = json.dumps({"status": "error", "error": str(e)})
@@ -342,6 +357,12 @@ For SUPPLIER:
         # Phase 3: Generate workflow ID for this email processing
         self.current_workflow_id = self._generate_workflow_id()
         self.workflow_actions = []  # Reset actions for new workflow
+        
+        # Reset AI-extracted data for new workflow
+        self.extracted_customer_info = None
+        self.inventory_matches = []
+        self.tool_results_cache = {}
+        
         logger.info(f"Starting workflow {self.current_workflow_id}")
         
         # Phase 4: Set workflow ID in two-tier executor
@@ -391,6 +412,9 @@ For SUPPLIER:
                     f"Prepared {len(attachments_data)} attachments for processing"
                 )
 
+            # Store email data for context in track_action method
+            self.current_email_data = email_data
+            
             # Store attachments in context for tools to access
             # Need to pass this to the order tools
             if hasattr(self.tool_factory, 'order_processor'):
@@ -482,24 +506,7 @@ REMEMBER:
                 {"role": "user", "content": prompt}
             ]
             
-            # Log the tool schemas being passed
-            logger.debug(f"Passing {len(self.tool_schemas)} tool schemas to OpenAI")
-            for schema in self.tool_schemas[:3]:  # Log first 3 schemas
-                logger.debug(f"Tool schema: {schema.get('function', {}).get('name', 'unknown')}")
-            
-            # Get initial response from model with tool schemas
-            logger.info("Calling OpenAI API with tools...")
-            response = await self.openai_client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                tools=self.tool_schemas,
-                tool_choice="auto"
-            )
-            
-            # Log the raw response
-            logger.debug(f"OpenAI response received: {response.choices[0].message}")
-
-            # Reset validator for new email
+            # Reset validator for new email (BEFORE any API calls)
             self.validator.reset()
             
             # Determine validation context
@@ -508,13 +515,21 @@ REMEMBER:
                 "email_data": email_data
             }
             
+            # Log the tool schemas being passed
+            logger.debug(f"Passing {len(self.tool_schemas)} tool schemas to OpenAI")
+            for schema in self.tool_schemas[:3]:  # Log first 3 schemas
+                tool_name = schema.get('function', {}).get('name', 'unknown')
+                params = schema.get('function', {}).get('parameters', {})
+                prop_count = len(params.get('properties', {}))
+                logger.debug(f"Tool schema: {tool_name} ({prop_count} parameters)")
+            
             # Process tool calls with TRUE approval capability AND validation
             tool_calls = []
             auto_executed = []
             pending_approval = []
             
             # Tool calling loop with validation
-            max_iterations = 10
+            max_iterations = 15  # Increased to ensure workflow completion
             iteration = 0
             validation_failures = 0
             max_validation_failures = 3
@@ -522,21 +537,41 @@ REMEMBER:
             
             # Continue processing until no more tools needed or max iterations
             while iteration < max_iterations:
-                # Make API call with tools (allow continued iteration)
-                if iteration > 0:
-                    logger.info(f"Tool calling iteration {iteration} - allowing AI to continue...")
-                    response = await self.openai_client.chat.completions.create(
-                        model=self.model,
-                        messages=messages,
-                        tools=self.tool_schemas,
-                        tool_choice="auto"
-                    )
+                # Make API call with tools (handle all iterations including first)
+                logger.info(f"Tool calling iteration {iteration}...")
+                response = await self.openai_client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    tools=self.tool_schemas,
+                    tool_choice="auto"
+                )
+                
+                # Log the raw response for first iteration
+                if iteration == 0:
+                    logger.debug(f"OpenAI response received: {response.choices[0].message}")
                 
                 # Check if AI wants to make tool calls
                 if not response.choices[0].message.tool_calls:
                     # No more tools needed - get final response
                     result = response.choices[0].message.content
-                    logger.info("AI completed tool calling - no more tools needed")
+                    
+                    # Check for explicit completion signals
+                    if result:
+                        completion_signals = [
+                            "workflow complete",
+                            "task complete",
+                            "processing complete",
+                            "no further action",
+                            "email processed successfully",
+                            "all tasks completed"
+                        ]
+                        
+                        result_lower = result.lower()
+                        if any(signal in result_lower for signal in completion_signals):
+                            logger.info("✅ AI signaled workflow completion")
+                        else:
+                            logger.info("AI completed tool calling - no more tools needed")
+                    
                     break
                 
                 # Process tool calls
@@ -642,10 +677,15 @@ REMEMBER:
                 # Add results to message history
                 messages.append(response.choices[0].message)
                 for tool_result in tool_results:
+                    # Ensure result is properly formatted
+                    result_content = tool_result["result"]
+                    if result_content is None or result_content == "":
+                        result_content = json.dumps({"status": "completed", "message": "Tool executed successfully"})
+                    
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tool_result["tool_call_id"],
-                        "content": tool_result["result"]
+                        "content": result_content
                     })
                 
                 # If validation failed, add strong guidance
@@ -693,6 +733,48 @@ REMEMBER:
                         )
                         break
                 
+                # Add continuation context to help AI decide what's next
+                if iteration < max_iterations - 1:  # Don't add on last iteration
+                    # Build a summary of what's been accomplished
+                    completed_summary = []
+                    if any(tc["tool"] == "classify_email_intent" for tc in tool_calls):
+                        completed_summary.append("✅ Email classified")
+                    if any(tc["tool"] in ["extract_pdf_data", "extract_excel_data"] for tc in tool_calls):
+                        completed_summary.append("✅ Attachments extracted and available")
+                    if any(tc["tool"] == "search_inventory" for tc in tool_calls):
+                        search_count = sum(1 for tc in tool_calls if tc["tool"] == "search_inventory")
+                        completed_summary.append(f"✅ {search_count} inventory search(es) completed")
+                    if any(tc["tool"] == "process_complete_order" for tc in tool_calls):
+                        completed_summary.append("✅ Order processing initiated")
+                    if any(tc["tool"] == "generate_document" for tc in tool_calls):
+                        completed_summary.append("✅ Document generation requested")
+                    if any(tc["tool"] == "send_email_response" for tc in tool_calls):
+                        completed_summary.append("✅ Email response queued")
+                    
+                    # Build continuation message
+                    continuation_msg = f"""
+📊 Workflow Progress Update:
+
+What you've accomplished so far:
+{chr(10).join(completed_summary) if completed_summary else "- Processing started"}
+
+Recent tools executed: {[tc['tool'] for tc in tool_calls[-3:]]}
+
+Based on the email context and extracted data, you have full autonomy to:
+- Continue processing if more work is needed
+- Search inventory for any items you identified in the attachments
+- Generate documents or responses as appropriate
+- Conclude the workflow if you believe it's complete
+
+Remember: You decide what needs to be done based on the email requirements and business context.
+"""
+                    
+                    messages.append({
+                        "role": "system",
+                        "content": continuation_msg
+                    })
+                    logger.debug(f"Added continuation context for iteration {iteration + 1}")
+                
                 iteration += 1
             
             # Check if we hit max iterations
@@ -720,25 +802,28 @@ REMEMBER:
                 for action in pending_approval:
                     try:
                         # Create a review request for each pending action
+                        # Using the correct parameters for create_review_request
                         review_request = await self.human_manager.create_review_request(
-                            order_id=None,  # We don't have order IDs for these actions
-                            customer_email=email_data.get("from", "unknown@email.com"),
-                            order_details={
-                                "action": action.get("action_name"),
-                                "parameters": action.get("parameters", {}),
-                                "action_id": action.get("action_id"),
-                                "workflow_id": self.current_workflow_id,
+                            email_data={
+                                "from": email_data.get("from", "unknown@email.com"),
+                                "subject": email_data.get("subject", ""),
+                                "body": email_data.get("body", ""),
+                                "date": email_data.get("date", ""),
+                                "message_id": email_data.get("message_id", ""),
                             },
-                            confidence_score=0.75,  # Default confidence for approval items
-                            reason=f"Irreversible action requires approval: {action.get('action_name')}",
-                            priority="MEDIUM",
-                            context={
-                                "email_subject": email_data.get("subject", ""),
-                                "email_body": email_data.get("body", "")[:500],
-                                "action_type": "irreversible",
-                            }
+                            search_results=self.inventory_matches or [],  # Use stored inventory matches
+                            confidence_score=75.0,  # Default confidence for approval items
+                            extracted_items=[{
+                                "action": action.get("action_name"),
+                                "action_id": action.get("action_id"),
+                                "parameters": action.get("parameters", {}),
+                                "workflow_id": self.current_workflow_id,
+                                "type": "irreversible_action",
+                                "requires_approval": True,
+                            }],
+                            image_matches=None  # No image matches for now
                         )
-                        logger.info(f"Created review request {review_request['request_id']} for {action.get('action_name')}")
+                        logger.info(f"Created review request {review_request.request_id if hasattr(review_request, 'request_id') else 'unknown'} for {action.get('action_name')}")
                     except Exception as e:
                         logger.error(f"Failed to create review request for action {action.get('action_name')}: {e}")
             
@@ -769,9 +854,31 @@ REMEMBER:
                 "executed_tools": workflow_summary["executed_tools"],
                 "email_type": workflow_summary.get("email_type", "unknown"),
                 # Phase 4: Two-tier execution results
-                # Using our tracked lists instead of two_tier_executor (which isn't being used currently)
-                "auto_executed_actions": auto_executed,
-                "pending_approval_actions": pending_approval,
+                # Enhanced with all necessary data for UI display
+                "auto_executed_actions": [
+                    {
+                        "action_name": action["action_name"],
+                        "action_type": action["action_type"],
+                        "timestamp": action["timestamp"],
+                        "parameters": action.get("parameters", {}),
+                        "confidence": action.get("confidence", 0.0)
+                    }
+                    for action in self.workflow_actions 
+                    if action.get("action_type") == "reversible" and action.get("executed", True)
+                ],
+                "pending_approval_actions": [
+                    {
+                        "action_name": action["action_name"],
+                        "action_type": action["action_type"],
+                        "timestamp": action["timestamp"],
+                        "parameters": action.get("parameters", {}),
+                        "confidence": action.get("confidence", 0.0)
+                    }
+                    for action in self.workflow_actions 
+                    if action.get("action_type") == "irreversible" and not action.get("executed", False)
+                ],
+                "inventory_matches": self.inventory_matches[:10] if self.inventory_matches else [],
+                "extracted_customer": self.extracted_customer_info,
             }
 
             return result_dict
@@ -1017,6 +1124,51 @@ Use your tools to:
         """Generate a unique action ID"""
         return f"ACT-{uuid.uuid4().hex[:12]}"
     
+    def _extract_and_store_tool_data(self, tool_name: str, result: Any) -> None:
+        """Extract and store critical data from tool results for UI display"""
+        try:
+            if tool_name == "process_complete_order":
+                # Extract customer information from order processing
+                result_data = json.loads(result) if isinstance(result, str) else result
+                if isinstance(result_data, dict) and result_data.get("customer"):
+                    self.extracted_customer_info = {
+                        "email": result_data.get("customer"),
+                        "company": result_data.get("customer_company", ""),
+                        "source": "ai_extraction",
+                        "confidence": result_data.get("extraction_confidence", 0.0)
+                    }
+                    logger.info(f"Stored AI-extracted customer: {self.extracted_customer_info}")
+                    
+            elif tool_name == "search_inventory":
+                # Extract inventory matches from search results
+                result_data = json.loads(result) if isinstance(result, str) else result
+                if isinstance(result_data, dict) and result_data.get("matches"):
+                    self.inventory_matches = result_data.get("matches", [])
+                    logger.info(f"Stored {len(self.inventory_matches)} inventory matches")
+                elif isinstance(result_data, list):
+                    # Handle list format from search_inventory
+                    if not hasattr(self, 'inventory_matches'):
+                        self.inventory_matches = []
+                    self.inventory_matches.extend(result_data)
+                    logger.info(f"Stored {len(result_data)} inventory matches")
+            
+            elif tool_name in ["extract_excel_data", "extract_pdf_data"]:
+                # Store attachment data for AI's reference
+                result_data = json.loads(result) if isinstance(result, str) else result
+                if not hasattr(self, 'extracted_attachments'):
+                    self.extracted_attachments = []
+                self.extracted_attachments.append({
+                    "tool": tool_name,
+                    "type": "excel" if "excel" in tool_name else "pdf",
+                    "data_preview": str(result_data)[:500]  # Store preview for context
+                })
+                logger.info(f"Stored {tool_name} results for AI context")
+                    
+        except Exception as e:
+            logger.error(f"Error extracting data from {tool_name} result: {e}")
+            # Don't raise - this is best-effort data extraction
+    
+    
     async def _track_action(
         self,
         action_name: str,
@@ -1074,13 +1226,157 @@ Use your tools to:
                 db.add(audit)
                 db.commit()
                 
-                # Track in memory
-                self.workflow_actions.append({
+                # If this is an irreversible action that's pending approval, 
+                # also add it to recommendation_queue for Human Review Dashboard
+                if action_type == ActionType.IRREVERSIBLE and not executed:
+                    # Create recommendation_queue entry for Human Review Dashboard
+                    queue_id = f"REC-{datetime.now().strftime('%Y%m%d%H%M%S')}-{action_id[:8]}"
+                    
+                    # Build recommendation data
+                    recommendation_data = {
+                        "action_id": action_id,
+                        "workflow_id": self.current_workflow_id or self._generate_workflow_id(),
+                        "action_name": action_name,
+                        "action_category": action_category,
+                        "parameters": details,
+                        "reasoning": reasoning,
+                        "requires_approval": True,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    
+                    # Add email context if available
+                    if hasattr(self, 'current_email_data') and self.current_email_data:
+                        recommendation_data["email_context"] = {
+                            "subject": self.current_email_data.get("subject", ""),
+                            "from": self.current_email_data.get("from", ""),
+                            "body_preview": self.current_email_data.get("body", "")[:500]
+                        }
+                    
+                    # Add two-tier action lists for UI display
+                    recommendation_data["auto_executed_actions"] = [
+                        {
+                            "action_name": action["action_name"],
+                            "action_type": action["action_type"],
+                            "timestamp": action["timestamp"],
+                            "parameters": action.get("parameters", {})
+                        }
+                        for action in self.workflow_actions 
+                        if action.get("action_type") == "reversible" and action.get("executed", True)
+                    ]
+                    
+                    recommendation_data["pending_approval_actions"] = [
+                        {
+                            "action_name": action["action_name"],
+                            "action_type": action["action_type"],
+                            "timestamp": action["timestamp"],
+                            "parameters": action.get("parameters", {})
+                        }
+                        for action in self.workflow_actions 
+                        if action.get("action_type") == "irreversible" and not action.get("executed", False)
+                    ]
+                    
+                    # Add inventory matches if available
+                    if self.inventory_matches:
+                        recommendation_data["inventory_matches"] = self.inventory_matches[:10]  # Limit for UI
+                    
+                    # Add extracted customer info
+                    if self.extracted_customer_info:
+                        recommendation_data["customer_info"] = self.extracted_customer_info
+                    
+                    # Create SQL for recommendation_queue
+                    from sqlalchemy import text
+                    insert_query = text("""
+                        INSERT INTO recommendation_queue (
+                            queue_id, 
+                            customer_email,
+                            recommendation_type,
+                            recommendation_data,
+                            confidence_score,
+                            priority,
+                            status,
+                            created_at
+                        ) VALUES (
+                            :queue_id,
+                            :customer_email,
+                            :recommendation_type,
+                            :recommendation_data,
+                            :confidence_score,
+                            :priority,
+                            'pending',
+                            NOW()
+                        )
+                    """)
+                    
+                    # Determine customer email with AI extraction priority
+                    customer_email = "unknown@email.com"
+                    SUPPLIER_EMAILS = ['trimsblr@yahoo.co.in', 'interfacedirect@gmail.com', 'suppliertags@gmail.com']
+                    
+                    # Priority 1: Use AI-extracted customer if available
+                    if self.extracted_customer_info and self.extracted_customer_info.get("email"):
+                        customer_email = self.extracted_customer_info["email"]
+                        logger.info(f"Using AI-extracted customer email: {customer_email}")
+                    
+                    # Priority 2: Check current email data and validate
+                    elif hasattr(self, 'current_email_data') and self.current_email_data:
+                        potential_customer = self.current_email_data.get("from", customer_email)
+                        
+                        # Check if sender is a known supplier
+                        if potential_customer.lower() in [s.lower() for s in SUPPLIER_EMAILS]:
+                            logger.warning(f"Sender {potential_customer} is a supplier, looking for real customer")
+                            
+                            # Try multiple regex patterns to extract customer from email thread
+                            email_body = self.current_email_data.get("body", "")
+                            import re
+                            
+                            # Multiple patterns for different email formats
+                            customer_patterns = [
+                                # Format: "On Monday 28 July, 2025 at 07:00:31 pm IST, Company <email> wrote:"
+                                r'On\s+\w+\s+\d+\s+\w+,\s+\d+\s+at\s+[^,]+,\s+[^<]+<([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})>\s+wrote:',
+                                # Simpler: any email before "wrote:"
+                                r'<([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})>\s+wrote:',
+                                # Even simpler: find storerhppl@gmail.com specifically
+                                r'(storerhppl@gmail\.com)'
+                            ]
+                            
+                            for pattern in customer_patterns:
+                                match = re.search(pattern, email_body, re.IGNORECASE)
+                                if match:
+                                    customer_email = match.group(1)
+                                    logger.info(f"Extracted customer from email thread: {customer_email}")
+                                    break
+                            
+                            if customer_email == "unknown@email.com":
+                                logger.error("Could not extract customer from email thread")
+                        else:
+                            # Sender is not a known supplier, use as customer
+                            customer_email = potential_customer
+                    
+                    # Execute insert
+                    db.execute(insert_query, {
+                        "queue_id": queue_id,
+                        "customer_email": customer_email,
+                        "recommendation_type": action_category.upper() if action_category else "ACTION",
+                        "recommendation_data": json.dumps(recommendation_data),
+                        "confidence_score": confidence or 0.75,
+                        "priority": "high" if action_category == "email" else "medium"
+                    })
+                    db.commit()
+                    
+                    logger.info(f"✅ Added pending action to recommendation_queue: {queue_id} for {action_name}")
+                
+                # Track in memory with enhanced details
+                action_data = {
                     "action_id": action_id,
                     "action_name": action_name,
                     "action_type": action_type.value,
-                    "timestamp": datetime.now().isoformat()
-                })
+                    "action_category": action_category,
+                    "executed": executed,
+                    "timestamp": datetime.now().isoformat(),
+                    "parameters": details,
+                    "confidence": confidence
+                }
+                
+                self.workflow_actions.append(action_data)
                 
                 logger.info(f"Tracked action {action_id}: {action_name} ({action_type.value})")
                 

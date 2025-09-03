@@ -116,3 +116,34 @@ ui-clean: ## Clean UI test artifacts
 
 # Combined UI and code quality check
 full-check: check ui-review ## Run all code and UI checks
+
+# Implementation Plan Validation targets
+check-plan: ## Validate changes against implementation plan
+	@echo "🔍 Checking adherence to Implementation Plan..."
+	@$(PYTHON) check_plan_adherence.py
+
+check-plan-override: ## Skip plan validation (requires justification)
+	@echo "⚠️ OVERRIDING plan validation - document this in IMPLEMENTATION_PLAN_LOCK.md"
+	@$(PYTHON) check_plan_adherence.py --override
+
+safe-commit: check-plan ## Commit with plan validation
+	@echo "✅ Plan validation passed. Proceeding with commit..."
+	@git commit --template=.gitmessage
+
+commit-override: check-plan-override ## Commit with plan override
+	@echo "⚠️ Committing with plan override..."
+	@git commit --template=.gitmessage
+
+plan-status: ## Show current implementation plan status
+	@echo "📊 Current Implementation Plan Status:"
+	@grep -A 2 "\*\*Current Phase\*\*:" docs/IMPLEMENTATION_PLAN_LOCK.md 2>/dev/null || echo "No plan lock file found"
+
+plan-next: ## Show next actions from plan
+	@echo "📍 Next Actions:"
+	@$(PYTHON) -c "from check_plan_adherence import PlanValidator; v = PlanValidator(); v.get_next_actions()"
+
+# Workflow shortcuts with plan checks
+dev-commit: format check-plan safe-commit ## Format, validate, and commit
+
+# Add plan check to existing all target
+all-with-plan: clean install-dev lint type-check test check-plan ## Run all checks including plan validation

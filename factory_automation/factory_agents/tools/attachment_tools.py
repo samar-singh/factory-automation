@@ -33,10 +33,27 @@ class AttachmentTools:
         # Extract Excel data tool
         @function_tool(
             name_override="extract_excel_data",
-            description_override="Extract order data from Excel file attachment" if self.mode == "execute" else "Analyze Excel attachment for proposal",
+            description_override="Extract order data from Excel file attachment. Use AFTER email classification when Excel files are present. Do NOT use without confirmed Excel attachments." if self.mode == "execute" else "Analyze Excel attachment for proposal. Use ONLY when Excel files are attached to email.",
         )
         async def extract_excel_data(filename: str, content: Optional[str] = None) -> str:
-            """Extract and parse data from Excel attachment"""
+            """Extract and parse structured data from Excel attachment files.
+            
+            This tool processes Excel (.xlsx, .xls) files to extract tabular order data.
+            Use this when you know there are Excel attachments containing order information
+            like item lists, quantities, or specifications.
+            
+            Args:
+                filename: Path to the Excel file or filename (e.g., "/path/to/order.xlsx", "PO_1542.xlsx")
+                content: Optional base64-encoded file content (if not provided, reads from filename path)
+            
+            Returns:
+                JSON string with extracted Excel data:
+                - filename: Name of the processed file
+                - rows: Number of data rows found
+                - columns: List of column headers
+                - sample_data: First 10 rows of data as dictionary
+                - summary: Human-readable description of contents
+            """
             try:
                 if self.mode == "execute":
                     # V3: Actually extract data
@@ -109,14 +126,25 @@ class AttachmentTools:
         # Extract PDF data tool
         @function_tool(
             name_override="extract_pdf_data",
-            description_override="Extract text content from PDF attachment" if self.mode == "execute" else "Analyze PDF attachment for proposal",
+            description_override="Extract text content from PDF attachment. Use AFTER email classification when PDF files are present. Do NOT use without confirmed PDF attachments." if self.mode == "execute" else "Analyze PDF attachment for proposal. Use ONLY when PDF files are attached to email.",
         )
         async def extract_pdf_data(filename: str, content: Optional[str] = None) -> str:
-            """Extract text from PDF attachment
+            """Extract text content from PDF attachment files.
+            
+            This tool processes PDF files to extract readable text content like order
+            details, specifications, or documentation. Use this when PDF attachments
+            contain order information that needs to be analyzed.
             
             Args:
-                filename: Path to the PDF file or filename
-                content: Optional base64 encoded content (if not provided, will read from filename path)
+                filename: Path to the PDF file or filename (e.g., "/path/to/order.pdf", "PO_1000.pdf")
+                content: Optional base64-encoded file content (if not provided, reads from filename path)
+            
+            Returns:
+                JSON string with extracted PDF data:
+                - filename: Name of the processed file
+                - pages: Total number of pages in the PDF
+                - extracted_text: Full text content from all pages
+                - summary: Brief description of the PDF contents
             """
             try:
                 if self.mode == "execute":
@@ -202,12 +230,32 @@ class AttachmentTools:
         # Process image tool
         @function_tool(
             name_override="process_tag_image",
-            description_override="Process tag image with Qwen2.5VL and store in ChromaDB" if self.mode == "execute" else "Analyze image for visual matching proposal",
+            description_override="Process tag image with Qwen2.5VL and store in ChromaDB. Use ONLY when image files are attached and visual analysis is needed. Do NOT use without confirmed image attachments." if self.mode == "execute" else "Analyze image for visual matching proposal. Use ONLY when image attachments are present.",
         )
         async def process_tag_image(
             image_path: str, order_id: str, customer_name: str
         ) -> str:
-            """Process and analyze tag image"""
+            """Process and analyze tag/product images using AI vision.
+            
+            This tool uses advanced computer vision to analyze product images and extract
+            visual features. Use this when customers have attached images of tags, labels,
+            or products they want to order or match.
+            
+            Args:
+                image_path: Full path to the image file (e.g., "/path/to/tag_sample.jpg")
+                order_id: Order identifier to associate with this image
+                customer_name: Customer name for image categorization
+            
+            Returns:
+                JSON string with image analysis results:
+                - status: Processing status ("success" or "failed")
+                - image_hash: Unique identifier for the processed image
+                - tag_type: Detected type of tag/label
+                - brand: Brand information extracted from image
+                - text_content: Text detected within the image
+                - colors: Dominant colors found in the image
+                - stored_in_chromadb: Whether image was stored for future searches
+            """
             try:
                 if self.mode == "execute" and self.image_processor:
                     # V3: Actually process image

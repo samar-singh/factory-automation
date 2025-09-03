@@ -1,0 +1,92 @@
+[
+  {
+    "tag_code": "BLU-CTN-23",
+    "description": "Blue Cotton Tag 2x3 inches",
+    "size": "2x3",
+    "color": "blue",
+    "material": "cotton",
+    "price": 5.5,
+    "stock": 1000
+  },
+  {
+    "tag_code": "RED-SLK-34",
+    "description": "Red Silk Tag 3x4 inches",
+    "size": "3x4",
+    "color": "red",
+    "material": "silk",
+    "price": 8.75,
+    "stock": 500
+  },
+  {
+    "tag_code": "GRN-PLY-25",
+    "description": "Green Polyester Tag 2x5 inches",
+    "size": "2x5",
+    "color": "green",
+    "material": "polyester",
+    "price": 6.25,
+    "stock": 750
+  },
+  {
+    "tag_code": "YLW-CTN-22",
+    "description": "Yellow Cotton Tag 2x2 inches",
+    "size": "2x2",
+    "color": "yellow",
+    "material": "cotton",
+    "price": 4.5,
+    "stock": 1200
+  },
+  {
+    "tag_code": "BLK-LTH-45",
+    "description": "Black Leather Tag 4x5 inches",
+    "size": "4x5",
+    "color": "black",
+    "material": "leather",
+    "price": 15.0,
+    "stock": 300
+  },
+  {
+    "tag_code": "WHT-PVC-33",
+    "description": "White PVC Tag 3x3 inches",
+    "size": "3x3",
+    "color": "white",
+    "material": "pvc",
+    "price": 5.0,
+    "stock": 800
+  },
+  {
+    "tag_code": "PRP-SLK-24",
+    "description": "Purple Silk Tag 2x4 inches",
+    "size": "2x4",
+    "color": "purple",
+    "material": "silk",
+    "price": 9.0,
+    "stock": 400
+  },
+  {
+    "tag_code": "ORG-CTN-35",
+    "description": "Orange Cotton Tag 3x5 inches",
+    "size": "3x5",
+    "color": "orange",
+    "material": "cotton",
+    "price": 7.0,
+    "stock": 600
+  },
+  {
+    "tag_code": "BRN-LTH-23",
+    "description": "Brown Leather Tag 2x3 inches",
+    "size": "2x3",
+    "color": "brown",
+    "material": "leather",
+    "price": 12.0,
+    "stock": 350
+  },
+  {
+    "tag_code": "GLD-MTL-22",
+    "description": "Gold Metallic Tag 2x2 inches",
+    "size": "2x2",
+    "color": "gold",
+    "material": "metallic",
+    "price": 10.0,
+    "stock": 250
+  }
+]

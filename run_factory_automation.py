@@ -15,11 +15,25 @@ from datetime import datetime
 
 from dotenv import load_dotenv
 
-# Set up logging
-logger = logging.getLogger(__name__)
-
 # Load environment variables from .env file
 load_dotenv()
+
+# Set up comprehensive logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(f'app_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+# Set specific loggers to DEBUG for troubleshooting
+logging.getLogger('factory_automation.factory_agents.orchestrator_v3_agentic').setLevel(logging.DEBUG)
+logging.getLogger('factory_automation.factory_agents.tools').setLevel(logging.DEBUG)
+logging.getLogger('openai').setLevel(logging.DEBUG)
+
+logger = logging.getLogger(__name__)
 
 
 def find_available_port(start_port=7860, max_attempts=10):
@@ -132,15 +146,11 @@ def start_web_interface():
     from factory_automation.factory_ui.human_review_dashboard import (
         HumanReviewDashboard,
     )
-    from factory_automation.factory_ui.proposal_review_dashboard import (
-        ProposalReviewDashboard,
-    )
+    # V4 Proposal dashboard removed - using two-tier approval system instead
     from factory_automation.factory_ui.image_display_helper import (
         create_image_gallery_html,
     )
-    from factory_automation.factory_agents.orchestrator_v4_proposal import (
-        ProposalOrchestratorV4,
-    )
+    # V4 Orchestrator removed - using V3 with approval mode instead
 
     print("🌐 Starting web interface...")
 
@@ -155,19 +165,10 @@ def start_web_interface():
     orchestrator = SHARED_ORCHESTRATOR
     human_manager = orchestrator.human_manager
 
-    # Create V4 proposal orchestrator
-    orchestrator_v4 = ProposalOrchestratorV4(
-        chromadb_client=orchestrator.chromadb_client,
-        use_mock_gmail=False
-    )
-    
     # Create review interface
     review_interface = HumanReviewDashboard(
         interaction_manager=human_manager, chromadb_client=orchestrator.chromadb_client
     )
-    
-    # Create proposal review dashboard
-    proposal_dashboard = ProposalReviewDashboard(orchestrator_v4=orchestrator_v4)
 
     # Create combined interface
     with gr.Blocks(title="Factory Automation", theme=gr.themes.Soft()) as app:
@@ -211,17 +212,14 @@ We need 1000 price tags for Allen Solly...
                         gr.Markdown(
                             "*Customer email will be extracted automatically from the 'From:' field. Documents will be processed for additional order details.*"
                         )
-                        with gr.Row():
-                            process_btn = gr.Button(
-                                "📧 Process Order (V3)",
-                                variant="primary",
-                                size="lg",
-                            )
-                            generate_proposal_btn = gr.Button(
-                                "📋 Generate Proposal (V4)",
-                                variant="secondary",
-                                size="lg",
-                            )
+                        process_btn = gr.Button(
+                            "📧 Process Order",
+                            variant="primary",
+                            size="lg",
+                        )
+                        
+                        # Add status message for loading indication
+                        status_message = gr.Markdown("", visible=False)
 
                     with gr.Column():
                         processing_result = gr.JSON(label="Processing Result")
@@ -436,6 +434,48 @@ We need 1000 price tags for Allen Solly...
 
                     # Process the email
                     result = await orchestrator.process_email(email_data)
+
+                    # Format two-tier action display for UI instead of raw JSON
+                    if isinstance(result, dict):
+                        # Extract the action arrays
+                        auto_executed = result.get("auto_executed_actions", [])
+                        pending_approval = result.get("pending_approval_actions", [])
+                        
+                        # Create formatted display with colored bullets
+                        formatted_display = {}
+                        
+                        # Add auto-executed actions with green bullets
+                        if auto_executed:
+                            formatted_display["✅ Auto-Executed Actions"] = []
+                            for action in auto_executed:
+                                action_name = action.get("action_name", "Unknown")
+                                status = action.get("status", "executed")
+                                formatted_display["✅ Auto-Executed Actions"].append(
+                                    f"• {action_name} ({status})"
+                                )
+                        
+                        # Add pending approval actions with orange bullets  
+                        if pending_approval:
+                            formatted_display["🟠 Pending Approval"] = []
+                            for action in pending_approval:
+                                action_name = action.get("action_name", "Unknown")
+                                action_id = action.get("action_id", "")
+                                formatted_display["🟠 Pending Approval"].append(
+                                    f"• {action_name} (ID: {action_id[:8]}...)" if action_id else f"• {action_name}"
+                                )
+                        
+                        # Add other key information
+                        if result.get("workflow_id"):
+                            formatted_display["Workflow ID"] = result["workflow_id"]
+                        if result.get("tool_calls"):
+                            formatted_display["Total Tool Calls"] = len(result["tool_calls"])
+                        if result.get("final_summary"):
+                            formatted_display["Summary"] = result["final_summary"][:200] + "..." if len(result.get("final_summary", "")) > 200 else result.get("final_summary")
+                        
+                        # Use formatted display instead of raw result for UI
+                        display_result = formatted_display if formatted_display else result
+                    else:
+                        display_result = result
 
                     # Create extracted info summary
                     extracted = f"Customer: {customer_email}\nSubject: {subject}\nBody Length: {len(clean_body)} chars"
@@ -705,95 +745,11 @@ We need 1000 price tags for Allen Solly...
                             "No image matching performed (no images in attachments)"
                         )
 
-                    return result, extracted, doc_analysis, image_summary, image_gallery
-
-                async def generate_proposal_v4(email_body, files):
-                    """Generate a proposal using V4 orchestrator"""
-                    import re
-                    
-                    # Extract email components
-                    from_pattern = r"[Ff]rom:\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})"
-                    subject_pattern = r"[Ss]ubject:\s*(.+?)(?:\n|$)"
-                    
-                    from_match = re.search(from_pattern, email_body)
-                    customer_email = from_match.group(1) if from_match else "unknown@example.com"
-                    
-                    subject_match = re.search(subject_pattern, email_body)
-                    subject = subject_match.group(1) if subject_match else "Order Request"
-                    
-                    # Clean body
-                    clean_body = re.sub(r"^[Ff]rom:.*?\n", "", email_body, flags=re.MULTILINE)
-                    clean_body = re.sub(r"^[Ss]ubject:.*?\n", "", clean_body, flags=re.MULTILINE)
-                    clean_body = re.sub(r"^[Dd]ate:.*?\n", "", clean_body, flags=re.MULTILINE)
-                    
-                    # Prepare email data
-                    email_data = {
-                        "from": customer_email,
-                        "subject": subject,
-                        "body": clean_body.strip(),
-                        "attachments": [f.name for f in files] if files else []
-                    }
-                    
-                    try:
-                        # Generate proposal
-                        proposal = await orchestrator_v4.process_email(email_data)
-                        
-                        if proposal:
-                            result = {
-                                "success": True,
-                                "workflow_id": proposal.workflow_id,
-                                "type": proposal.workflow_type.value,
-                                "confidence": proposal.confidence,
-                                "reasoning": proposal.reasoning,
-                                "actions_count": len(proposal.proposed_actions),
-                                "message": f"✅ Proposal {proposal.workflow_id} generated successfully!"
-                            }
-                            
-                            # Prepare extracted info
-                            info = f"📋 Proposal Generated\n"
-                            info += f"ID: {proposal.workflow_id}\n"
-                            info += f"Type: {proposal.workflow_type.value}\n"
-                            info += f"Confidence: {proposal.confidence:.1%}\n"
-                            info += f"Actions: {len(proposal.proposed_actions)} steps\n\n"
-                            info += f"Reasoning: {proposal.reasoning}"
-                            
-                            # Document analysis placeholder
-                            doc_info = "📎 Documents will be analyzed during execution"
-                            
-                            # Image summary
-                            image_info = "📸 Visual matching available after approval"
-                            
-                            return result, info, doc_info, image_info, []
-                        else:
-                            return {
-                                "success": False,
-                                "error": "Failed to generate proposal"
-                            }, "❌ Proposal generation failed", "", "", []
-                            
-                    except Exception as e:
-                        logger.error(f"Error generating proposal: {e}")
-                        return {
-                            "success": False,
-                            "error": str(e)
-                        }, f"❌ Error: {str(e)}", "", "", []
+                    return display_result, extracted, doc_analysis, image_summary, image_gallery
 
                 process_btn.click(
                     fn=lambda body, files: asyncio.run(
                         process_order_with_documents(body, files)
-                    ),
-                    inputs=[email_input, attached_files],
-                    outputs=[
-                        processing_result,
-                        extracted_info,
-                        document_analysis,
-                        image_match_summary,
-                        image_matches_display,
-                    ],
-                )
-                
-                generate_proposal_btn.click(
-                    fn=lambda body, files: asyncio.run(
-                        generate_proposal_v4(body, files)
                     ),
                     inputs=[email_input, attached_files],
                     outputs=[
@@ -809,9 +765,7 @@ We need 1000 price tags for Allen Solly...
             with gr.TabItem("👤 Human Review"):
                 review_interface.create_interface()
 
-            # Proposal Review Tab (V4 Orchestrator)
-            with gr.TabItem("📋 Proposal Review"):
-                proposal_interface = proposal_dashboard.create_interface()
+            # V4 Proposal Review tab removed - using two-tier approval system instead
 
             # Inventory Search Tab
             with gr.TabItem("🔍 Inventory Search"):
@@ -1266,6 +1220,85 @@ We need 1000 price tags for Allen Solly...
 
                 refresh_btn.click(fn=get_status, outputs=[status_display])
 
+        # Add API endpoints for approval actions
+        async def approve_action(action_id: str, queue_id: str = None):
+            """Approve and execute a pending action"""
+            try:
+                logger.info(f"Approving action: {action_id}, queue_id: {queue_id}")
+                
+                # Get the orchestrator's approval method
+                if hasattr(orchestrator, 'approve_action'):
+                    result = await orchestrator.approve_action(action_id)
+                    
+                    # Update recommendation_queue if queue_id provided
+                    if queue_id:
+                        from factory_automation.factory_database.db import get_db
+                        from sqlalchemy import text
+                        
+                        with get_db() as db:
+                            update_query = text("""
+                                UPDATE recommendation_queue
+                                SET status = 'approved',
+                                    reviewed_at = NOW(),
+                                    reviewed_by = 'human_reviewer'
+                                WHERE queue_id = :queue_id
+                            """)
+                            db.execute(update_query, {"queue_id": queue_id})
+                            db.commit()
+                    
+                    return {"success": True, "message": f"Action {action_id} approved and executed", "result": result}
+                else:
+                    return {"success": False, "message": "Orchestrator does not support approval"}
+                    
+            except Exception as e:
+                logger.error(f"Error approving action {action_id}: {e}")
+                return {"success": False, "message": str(e)}
+        
+        async def reject_action(action_id: str, queue_id: str = None, reason: str = None):
+            """Reject a pending action"""
+            try:
+                logger.info(f"Rejecting action: {action_id}, queue_id: {queue_id}, reason: {reason}")
+                
+                # Update ActionAudit to mark as rejected
+                from factory_automation.factory_database.db import get_db
+                from sqlalchemy import text
+                import json
+                
+                with get_db() as db:
+                    # Update ActionAudit
+                    audit_update = text("""
+                        UPDATE action_audit
+                        SET result = :result
+                        WHERE action_id = :action_id
+                    """)
+                    db.execute(audit_update, {
+                        "action_id": action_id,
+                        "result": json.dumps({"status": "rejected_by_human", "reason": reason})
+                    })
+                    
+                    # Update recommendation_queue if queue_id provided
+                    if queue_id:
+                        queue_update = text("""
+                            UPDATE recommendation_queue
+                            SET status = 'rejected',
+                                reviewed_at = NOW(),
+                                reviewed_by = 'human_reviewer'
+                            WHERE queue_id = :queue_id
+                        """)
+                        db.execute(queue_update, {"queue_id": queue_id})
+                    
+                    db.commit()
+                
+                return {"success": True, "message": f"Action {action_id} rejected"}
+                
+            except Exception as e:
+                logger.error(f"Error rejecting action {action_id}: {e}")
+                return {"success": False, "message": str(e)}
+        
+        # Expose approval endpoints as Gradio API
+        app.load(fn=lambda: None, inputs=None, outputs=None, api_name="approve_action")
+        app.load(fn=lambda: None, inputs=None, outputs=None, api_name="reject_action")
+
     # Launch the app
     app.launch(
         server_name="127.0.0.1",  # Changed from 0.0.0.0 for Safari compatibility
@@ -1295,7 +1328,7 @@ def main():
     # Wait for orchestrator to be initialized
     import time
 
-    max_wait = 10  # seconds
+    max_wait = 30  # seconds - increased for Stella-400M loading
     waited = 0
     while SHARED_ORCHESTRATOR is None and waited < max_wait:
         time.sleep(0.5)

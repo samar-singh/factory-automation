@@ -28,12 +28,31 @@ class SupplierTools:
         # Handle supplier inquiry tool
         @function_tool(
             name_override="handle_supplier_inquiry",
-            description_override="Handle supplier communications, vendor inquiries, and procurement-related emails." if self.mode == "execute" else "Analyze supplier communication for proposal generation",
+            description_override="Handle supplier communications, vendor inquiries, and procurement-related emails. Use ONLY when email is FROM suppliers TO the business. Do NOT use for customer emails." if self.mode == "execute" else "Analyze supplier communication for proposal generation. Use ONLY for supplier/vendor emails.",
         )
         async def handle_supplier_inquiry(
             supplier_email: str, inquiry_type: str, email_subject: str, email_body: str
         ) -> str:
-            """Handle supplier communications"""
+            """Handle communications from suppliers and vendors.
+            
+            This tool processes emails FROM suppliers TO the business (reverse direction
+            from customer emails). Use this ONLY when the email is from vendors, material
+            suppliers, or service providers contacting the business.
+            
+            Args:
+                supplier_email: Email address of the supplier/vendor sending the inquiry
+                inquiry_type: Type of inquiry ("quotation", "material_availability", "delivery_schedule", "payment_terms", "quality_concern", "new_vendor")
+                email_subject: Subject line of the supplier's email
+                email_body: Full text content of the supplier's email
+            
+            Returns:
+                JSON string with supplier inquiry handling results:
+                - inquiry_processed: Whether inquiry was handled
+                - inquiry_record: Record with ID, type, and priority
+                - routed_to: Which internal team should handle this
+                - auto_response_sent: Whether acknowledgment was sent
+                - requires_human_review: Whether manual review is needed
+            """
             
             try:
                 # Analyze supplier inquiry

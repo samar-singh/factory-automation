@@ -175,7 +175,20 @@ class OrderProcessorAgent:
         attachments: List[Dict[str, Any]] = None,
     ) -> ExtractedOrder:
         """Extract order data using GPT-4"""
-
+        
+        # Known supplier emails that should not be treated as customers
+        SUPPLIER_EMAILS = ['trimsblr@yahoo.co.in', 'interfacedirect@gmail.com', 'suppliertags@gmail.com']
+        
+        # Check if this is a supplier response (contains forwarded/quoted content)
+        is_supplier_response = any([
+            "On " in email_body and " wrote:" in email_body,
+            "Pro-Forma Invoice" in email_subject.upper(),
+            "PROFORMA INVOICE" in email_subject.upper(),
+            "PFA Pro-Forma" in email_body,
+            sender_email.lower() in [s.lower() for s in SUPPLIER_EMAILS],
+            "Interface Direct" in email_body and "Tag supplier" in email_body,
+        ])
+        
         # Prepare extraction prompt
         extraction_prompt = f"""
         Analyze this order email from a garment tag manufacturing context and extract comprehensive order details.
@@ -190,7 +203,11 @@ class OrderProcessorAgent:
         Attachments mentioned: {len(attachments) if attachments else 0}
         
         Extract and structure the following:
-        1. Customer information (company, contact person, email, phone)
+        1. Customer information (IMPORTANT: The customer is who is ORDERING tags, not who sent this email)
+           - If this is a supplier response/pro-forma invoice, look in the quoted/forwarded section for the original customer
+           - Common pattern: "On [date], [Customer Name] <customer@email.com> wrote:"
+           - The customer is typically the company requesting tags (e.g., Rajlaxmi Home Products, retail brands)
+           - DO NOT use trimsblr@yahoo.co.in or Interface Direct as customer - they are suppliers
         2. Order items with specifications:
            - Tag codes (e.g., TBALWBL0009N)
            - Tag types (fit tags, main tags, price tags, care labels, etc.)
@@ -218,6 +235,16 @@ class OrderProcessorAgent:
         
         Return as structured JSON matching the ExtractedOrder schema.
         """
+        
+        # Add context if this is a supplier response
+        if is_supplier_response:
+            extraction_prompt += f"""
+        
+        ⚠️ IMPORTANT: This appears to be a SUPPLIER RESPONSE email from {sender_email}.
+        The actual CUSTOMER who placed the order should be found in the quoted/forwarded email content.
+        Look for patterns like "On [date], [Customer Name] <customer@email.com> wrote:" to identify the real customer.
+        DO NOT use {sender_email} as the customer email - they are the supplier responding to the customer's order.
+        """
 
         try:
             # Check if beta parse method is available (requires OpenAI SDK 1.50+)
@@ -232,11 +259,23 @@ class OrderProcessorAgent:
                             {
                                 "role": "system",
                                 "content": """You are an expert at extracting structured order information from garment industry emails.
-                                This is a garment tag manufacturing company, so ALL emails are about ordering tags/labels.
-                                Focus on finding: tag types, quantities, brands, and special requirements.
-                                ALWAYS extract at least one item being ordered, even if you have to infer from context.
-                                Common items ordered: price tags, care labels, size tags, brand labels, wash care labels.
-                                If no specific items are mentioned, assume they want price tags.""",
+
+CRITICAL CONTEXT:
+- You are processing emails for a garment tag manufacturing company
+- Emails may be from CUSTOMERS (placing orders) OR from SUPPLIERS (responding with invoices/quotes)
+- In email threads, look for the ORIGINAL order sender (usually in quoted text starting with "On [date]...")
+- The customer is the entity PLACING the order, not necessarily the email sender
+- Common supplier emails: trimsblr@yahoo.co.in (Interface Direct - tag supplier)
+- Common customer pattern: Companies like Rajlaxmi Home Products, retail brands placing bulk orders
+
+When extracting customer information:
+- If the email is a supplier response (with pro-forma invoice), find the customer in the quoted order
+- Look for patterns like "On [date], [customer name] <[customer email]> wrote:"
+- The customer email should be the one who originally requested the tags/labels
+
+Focus on finding: tag types, quantities, brands, and special requirements.
+ALWAYS extract at least one item being ordered, even if you have to infer from context.
+Common items ordered: price tags, care labels, size tags, brand labels, wash care labels.""",
                             },
                             {"role": "user", "content": extraction_prompt},
                         ],
@@ -263,8 +302,12 @@ class OrderProcessorAgent:
                             {
                                 "role": "system",
                                 "content": """You are an expert at extracting structured order information from garment industry emails.
-                                Return a JSON object with: customer_information, order_items, delivery_requirements.
-                                ALWAYS include at least one item in order_items.""",
+                                
+CRITICAL: The customer is who is ORDERING tags, not necessarily who sent the email.
+- If sender is trimsblr@yahoo.co.in or Interface Direct, they are SUPPLIERS, not customers
+- Look for the actual customer in quoted/forwarded content (pattern: "On [date], [name] <email> wrote:")
+- Return a JSON object with: customer_information, order_items, delivery_requirements.
+- ALWAYS include at least one item in order_items.""",
                             },
                             {"role": "user", "content": extraction_prompt},
                         ],
@@ -312,6 +355,8 @@ class OrderProcessorAgent:
                         {
                             "role": "system",
                             "content": """You are an expert at extracting structured order information.
+                            CRITICAL: The customer is who ORDERS tags, not necessarily the email sender.
+                            If sender is trimsblr@yahoo.co.in, they are a SUPPLIER - find the real customer in quoted text.
                             Return JSON with: customer_information, order_items, delivery_requirements.""",
                         },
                         {"role": "user", "content": extraction_prompt},
@@ -349,6 +394,36 @@ class OrderProcessorAgent:
                 logger.info(
                     f"AI extracted data: {ai_order.model_dump_json(indent=2)[:500]}..."
                 )
+                
+                # Validate and correct customer email if needed
+                if ai_order.customer_information and ai_order.customer_information.email:
+                    extracted_email = ai_order.customer_information.email.lower()
+                    if extracted_email in [s.lower() for s in SUPPLIER_EMAILS]:
+                        logger.warning(f"⚠️ AI incorrectly identified supplier {extracted_email} as customer")
+                        
+                        # Try to extract real customer from email thread
+                        import re
+                        # Look for pattern: "On [date], [name] <email> wrote:"
+                        customer_pattern = r'On\s+.*?,\s+.*?\s+<([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})>\s+wrote:'
+                        match = re.search(customer_pattern, email_body)
+                        if match:
+                            real_customer_email = match.group(1)
+                            logger.info(f"✅ Found real customer email in thread: {real_customer_email}")
+                            ai_order.customer_information.email = real_customer_email
+                            
+                            # Also try to extract company name
+                            company_pattern = r'On\s+.*?,\s+([^<]+)\s+<[^>]+>\s+wrote:'
+                            company_match = re.search(company_pattern, email_body)
+                            if company_match:
+                                company_name = company_match.group(1).strip()
+                                # Clean up common suffixes
+                                company_name = company_name.replace(" Pvt ltd", " Pvt Ltd")
+                                company_name = company_name.replace(" Pvt. Ltd.", " Pvt Ltd")
+                                if company_name and company_name != ai_order.customer_information.company:
+                                    logger.info(f"✅ Found real customer company: {company_name}")
+                                    ai_order.customer_information.company = company_name
+                        else:
+                            logger.warning("Could not find real customer email in thread, will use fallback")
             else:
                 logger.warning("AI returned None for order extraction")
                 # Create empty model as fallback
